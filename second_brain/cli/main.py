@@ -422,5 +422,34 @@ def process():
     db.close()
 
 
+@app.command()
+def telegram(
+    token: str = typer.Option(
+        None, "--token", envvar="TELEGRAM_BOT_TOKEN",
+        help="Telegram bot token (or set TELEGRAM_BOT_TOKEN env var)",
+    ),
+):
+    """Start the Telegram bot (requires python-telegram-bot)."""
+    if not token:
+        console.print(
+            "[red]Error:[/red] Provide a bot token via --token or "
+            "TELEGRAM_BOT_TOKEN environment variable.\n\n"
+            "Get one from @BotFather on Telegram."
+        )
+        raise typer.Exit(1)
+
+    try:
+        from second_brain.integrations.telegram import run_bot
+    except ImportError:
+        console.print(
+            '[red]Error:[/red] python-telegram-bot is not installed.\n'
+            'Install it with: pip install "second-brain[telegram]"'
+        )
+        raise typer.Exit(1)
+
+    console.print("[green]Starting Telegram bot...[/green] (Ctrl+C to stop)")
+    run_bot(token, db_path=_DB_PATH)
+
+
 if __name__ == "__main__":
     app()

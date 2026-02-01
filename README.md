@@ -148,6 +148,43 @@ SQLite is the single source of truth. The schema includes:
 
 The vector index (used for semantic search) is derived state and can be rebuilt from notes at any time.
 
+## Telegram bot
+
+Use the brain from Telegram -- any message you send is captured as a note, and slash commands give you full access to search, ask, beliefs, and more.
+
+### Setup
+
+1. Talk to [@BotFather](https://t.me/BotFather) on Telegram and create a new bot. Copy the token.
+2. Install the telegram extra:
+   ```bash
+   uv pip install -e ".[telegram]"
+   ```
+3. Start the bot:
+   ```bash
+   # Via environment variable
+   export TELEGRAM_BOT_TOKEN="your-token-here"
+   brain telegram
+
+   # Or inline
+   brain telegram --token "your-token-here"
+   ```
+
+### Bot commands
+
+| Command | Description |
+|---------|-------------|
+| *(any message)* | Captured as a note with auto-extracted tags and entities |
+| `/ask <query>` | Evidence-grounded Q&A |
+| `/search <query>` | Full-text search |
+| `/beliefs [status]` | List beliefs (optional status filter) |
+| `/confirm <id>` | Confirm a belief (+0.2 confidence) |
+| `/refute <id>` | Refute a belief (-0.3 confidence) |
+| `/status` | System health overview |
+| `/process` | Run a proactive cycle |
+| `/help` | Show available commands |
+
+The bot shares the same SQLite database as the CLI, so notes added from either interface are immediately available in both.
+
 ## Optional: semantic search
 
 Install the `vectors` extra for sentence-transformer-based embeddings:
@@ -164,13 +201,14 @@ Without it, the system falls back to a basic hash-based embedding that still sup
 # Install with dev dependencies
 uv pip install -e ".[dev]"
 
-# Run tests (57 tests across all phases)
+# Run tests (71 tests across all phases)
 pytest tests/ -v
 
 # Run a specific phase
 pytest tests/test_phase0.py -v
 pytest tests/test_phase1.py -v
 pytest tests/test_phase2.py -v
+pytest tests/test_telegram.py -v
 
 # Run with coverage
 pytest tests/ --cov=second_brain

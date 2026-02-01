@@ -38,6 +38,11 @@
 - [x] **2.7** CLI: status / snapshot / restore / report / process commands
 - [x] **2.8** End-to-end tests — full lifecycle + contradiction lifecycle (57/57 passing)
 
+## Phase 3: Integrations — COMPLETE
+
+- [x] **3.1** Telegram bot — message ingestion, all commands (/ask, /search, /beliefs, /confirm, /refute, /status, /process)
+- [x] **3.2** Telegram tests — 14/14 passing (71 total)
+
 ---
 
 ## Tech Choices
@@ -46,6 +51,7 @@
 - **Rich** — CLI output (tables, panels)
 - **sqlite3** (stdlib) — storage with WAL, FK enforcement
 - **sentence-transformers** — optional local embeddings (falls back to hash-based)
+- **python-telegram-bot** — Telegram bot integration (optional)
 - **uv** — package management
 
 ## File Inventory
@@ -82,10 +88,13 @@ second_brain/
 ├── runtime/
 │   ├── dispatcher.py          # Signal → agent routing
 │   └── scheduler.py           # Periodic proactive pipeline
+├── integrations/
+│   └── telegram.py            # Telegram bot (message → note, commands)
 ├── cli/
-│   └── main.py                # All CLI commands
+│   └── main.py                # All CLI commands (including `brain telegram`)
 └── tests/
     ├── test_phase0.py         # 20 tests
     ├── test_phase1.py         # 26 tests
-    └── test_phase2.py         # 11 tests
+    ├── test_phase2.py         # 11 tests
+    └── test_telegram.py       # 14 tests
 ```
