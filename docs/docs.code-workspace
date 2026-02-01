@@ -1,0 +1,13 @@
+{
+	"folders": [
+		{
+			"name": "docs",
+			"path": "."
+		},
+		{
+			"name": "beta_brain",
+			"path": "../beta_brain"
+		}
+	],
+	"settings": {}
+}
