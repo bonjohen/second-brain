@@ -8,7 +8,21 @@
       "Bash(git add:*)",
       "Bash(git commit:*)",
       "Bash(git -C \"C:\\\\Projects\\\\beta_brain\" add .gitignore .claude pyproject.toml second_brain tests)",
-      "Bash(git -C \"C:\\\\Projects\\\\beta_brain\" commit -m \"Phase 0.1: Project scaffolding - directory tree, pyproject.toml, .gitignore\")"
+      "Bash(git -C \"C:\\\\Projects\\\\beta_brain\" commit -m \"Phase 0.1: Project scaffolding - directory tree, pyproject.toml, .gitignore\")",
+      "Bash(uv venv:*)",
+      "Bash(\"C:\\\\Projects\\\\beta_brain\\\\.venv\\\\Scripts\\\\activate\")",
+      "Bash(uv pip install:*)",
+      "Bash(\"C:\\\\Projects\\\\beta_brain\\\\.venv\\\\Scripts\\\\python.exe\" -m pytest \"C:\\\\Projects\\\\beta_brain\\\\tests\\\\test_phase0.py\" -v)",
+      "Bash(\"C:\\\\Projects\\\\beta_brain\\\\.venv\\\\Scripts\\\\python.exe\" -m second_brain.cli.main add \"This is about #machinelearning and John Smith works on neural networks\")",
+      "Bash(\"C:\\\\Projects\\\\beta_brain\\\\.venv\\\\Scripts\\\\python.exe\" -m second_brain.cli.main search \"machinelearning\")",
+      "Bash(\"C:\\\\Projects\\\\beta_brain\\\\.venv\\\\Scripts\\\\python.exe\" -m second_brain.cli.main show 94694622)",
+      "Bash(\"C:\\\\Projects\\\\beta_brain\\\\.venv\\\\Scripts\\\\python.exe\" -m pytest:*)",
+      "Bash(\"C:\\\\Projects\\\\beta_brain\\\\.venv\\\\Scripts\\\\python.exe\" -m second_brain.cli.main --help)",
+      "Bash(\"C:\\\\Projects\\\\beta_brain\\\\.venv\\\\Scripts\\\\python.exe\" -m second_brain.cli.main status)",
+      "Bash(git -C \"C:\\\\Projects\\\\beta_brain\" status)",
+      "Bash(git -C \"C:\\\\Projects\\\\beta_brain\" diff --stat)",
+      "Bash(git -C \"C:\\\\Projects\\\\beta_brain\" log --oneline -5)",
+      "Bash(git -C \"C:\\\\Projects\\\\beta_brain\" add README.md .claude/settings.local.json docs/plan.md docs/design.md docs/CLAUDE.md second_brain/core/models.py second_brain/core/services/notes.py second_brain/core/services/beliefs.py second_brain/core/services/edges.py second_brain/core/services/signals.py second_brain/core/services/audit.py second_brain/core/services/ask.py second_brain/core/services/reports.py second_brain/core/rules/confidence.py second_brain/core/rules/decay.py second_brain/core/rules/contradictions.py second_brain/agents/ingestion.py second_brain/agents/synthesis.py second_brain/agents/challenger.py second_brain/agents/curator.py second_brain/storage/sqlite.py second_brain/storage/vector.py second_brain/storage/snapshot.py second_brain/storage/migrations/001_initial_schema.sql second_brain/storage/migrations/runner.py second_brain/runtime/dispatcher.py second_brain/runtime/scheduler.py second_brain/cli/main.py tests/test_phase0.py tests/test_phase1.py tests/test_phase2.py)"
     ]
   }
 }
