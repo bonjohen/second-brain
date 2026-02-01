@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir \"C:\\\\Projects\\\\beta_brain\\\\docs\" /s /b)",
+      "Bash(where:*)",
+      "Bash(uv --version:*)",
+      "Bash(git init:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git -C \"C:\\\\Projects\\\\beta_brain\" add .gitignore .claude pyproject.toml second_brain tests)",
+      "Bash(git -C \"C:\\\\Projects\\\\beta_brain\" commit -m \"Phase 0.1: Project scaffolding - directory tree, pyproject.toml, .gitignore\")"
+    ]
+  }
+}
