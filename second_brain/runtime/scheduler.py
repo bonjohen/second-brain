@@ -24,6 +24,7 @@ class Scheduler:
         self._tick_interval = tick_interval
         self._steps: list[tuple[str, AgentStep]] = []
         self._running = False
+        self.failure_counts: dict[str, int] = {}
 
     def register(self, name: str, step: AgentStep) -> None:
         """Register an agent step to run on each tick."""
@@ -41,7 +42,10 @@ class Scheduler:
                 results.append((name, result))
                 logger.info("Step '%s' completed: %s", name, result)
             except Exception:
-                logger.exception("Step '%s' failed", name)
+                self.failure_counts[name] = self.failure_counts.get(name, 0) + 1
+                logger.exception(
+                    "Step '%s' failed (total failures: %d)", name, self.failure_counts[name]
+                )
                 results.append((name, None))
         return results
 

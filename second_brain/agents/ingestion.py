@@ -15,6 +15,7 @@ from second_brain.core.services.notes import NoteService
 from second_brain.core.services.signals import SignalService
 
 TAG_PATTERN = re.compile(r"#(\w[\w/-]*)", re.UNICODE)
+MAX_TAG_LENGTH = 100
 ENTITY_PATTERN = re.compile(r"@(\w[\w/.:-]*)", re.UNICODE)
 
 
@@ -85,7 +86,7 @@ class IngestionAgent:
     def extract_tags(content: str) -> list[str]:
         """Extract #hashtag tokens from content. Returns lowercase, deduplicated, sorted."""
         matches = TAG_PATTERN.findall(content)
-        return sorted({t.lower() for t in matches})
+        return sorted({t.lower() for t in matches if len(t) <= MAX_TAG_LENGTH})
 
     @staticmethod
     def extract_entities(content: str) -> list[str]:

@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import enum
+import json
 import uuid
 from datetime import UTC, datetime
 from typing import Any, ClassVar
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 # ── Enums ──────────────────────────────────────────────────────────────
 
@@ -112,11 +113,22 @@ class Signal(BaseModel):
 
     model_config = {"frozen": True}
 
+    MAX_PAYLOAD_BYTES: ClassVar[int] = 65_536  # 64 KB
+
     signal_id: uuid.UUID = Field(default_factory=uuid.uuid4)
     type: str
     payload: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     processed_at: datetime | None = None
+
+    @field_validator("payload")
+    @classmethod
+    def payload_size_limit(cls, v: dict[str, Any]) -> dict[str, Any]:
+        if len(json.dumps(v)) > cls.MAX_PAYLOAD_BYTES:
+            raise ValueError(
+                f"Signal payload exceeds maximum size of {cls.MAX_PAYLOAD_BYTES} bytes"
+            )
+        return v
 
 
 class Belief(BaseModel):
@@ -153,6 +165,12 @@ class Edge(BaseModel):
     rel_type: RelType
     to_type: EntityType
     to_id: uuid.UUID
+
+    @model_validator(mode="after")
+    def no_same_type_self_loop(self) -> Edge:
+        if self.from_type == self.to_type and self.from_id == self.to_id:
+            raise ValueError("Self-loop edges (same type and ID) are not allowed")
+        return self
 
 
 class AuditEntry(BaseModel):

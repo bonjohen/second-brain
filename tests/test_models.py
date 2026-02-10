@@ -144,6 +144,11 @@ class TestSignal:
         assert s.payload == {"note_id": "abc"}
         assert s.processed_at is None
 
+    def test_signal_oversized_payload_rejected(self):
+        big_payload = {"data": "x" * 70_000}
+        with pytest.raises(ValidationError, match="maximum size"):
+            Signal(type="test", payload=big_payload)
+
     def test_signal_is_frozen(self):
         s = Signal(type="test")
         with pytest.raises(ValidationError):
@@ -192,6 +197,29 @@ class TestEdge:
         )
         assert e.from_type == EntityType.NOTE
         assert e.rel_type == RelType.SUPPORTS
+
+    def test_self_loop_rejected(self):
+        nid = uuid.uuid4()
+        with pytest.raises(ValidationError, match="Self-loop"):
+            Edge(
+                from_type=EntityType.NOTE,
+                from_id=nid,
+                rel_type=RelType.RELATED_TO,
+                to_type=EntityType.NOTE,
+                to_id=nid,
+            )
+
+    def test_cross_type_same_id_allowed(self):
+        """Same ID but different types should be allowed (not a self-loop)."""
+        shared_id = uuid.uuid4()
+        e = Edge(
+            from_type=EntityType.NOTE,
+            from_id=shared_id,
+            rel_type=RelType.SUPPORTS,
+            to_type=EntityType.BELIEF,
+            to_id=shared_id,
+        )
+        assert e.from_id == e.to_id
 
     def test_edge_is_frozen(self):
         e = Edge(

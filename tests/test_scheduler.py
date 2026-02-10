@@ -70,3 +70,13 @@ class TestScheduler:
         scheduler.run_continuous()
 
         assert counter["n"] == 2
+
+    def test_failure_counter_increments(self):
+        scheduler = Scheduler()
+        scheduler.register("flaky", lambda: (_ for _ in ()).throw(RuntimeError("oops")))
+
+        scheduler.tick()
+        assert scheduler.failure_counts["flaky"] == 1
+
+        scheduler.tick()
+        assert scheduler.failure_counts["flaky"] == 2

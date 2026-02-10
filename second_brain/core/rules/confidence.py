@@ -11,16 +11,24 @@ from second_brain.core.services.beliefs import BeliefService
 from second_brain.core.services.edges import EdgeService
 from second_brain.core.utils import parse_utc_datetime
 
+DEFAULT_BASE_CONFIDENCE = 0.5
+DEFAULT_SUPPORT_WEIGHT = 0.1
+DEFAULT_CONTRADICTION_WEIGHT = 0.1
+
 
 def compute_confidence(
     belief_id: uuid.UUID,
     belief_service: BeliefService,
     edge_service: EdgeService,
     now: datetime | None = None,
+    base_confidence: float = DEFAULT_BASE_CONFIDENCE,
+    support_weight: float = DEFAULT_SUPPORT_WEIGHT,
+    contradiction_weight: float = DEFAULT_CONTRADICTION_WEIGHT,
 ) -> float:
     """Compute confidence for a belief based on edge support/contradiction and decay.
 
-    Formula: clamp((supports - contradicts) * decay(time_since_update), 0.0, 1.0)
+    Formula: clamp((base + support_weight*supports - contradiction_weight*contradicts)
+                    * decay(time_since_update), 0.0, 1.0)
     """
     belief = belief_service.get_belief(belief_id)
     if belief is None:
@@ -50,9 +58,9 @@ def compute_confidence(
     else:
         decay_factor = no_decay()
 
-    # Base confidence from edge balance: start at 0.5, add support/contradiction
-    # Each support adds 0.1, each contradiction subtracts 0.1
-    raw = (0.5 + 0.1 * supports - 0.1 * contradicts) * decay_factor
+    # Base confidence from edge balance
+    edge_score = base_confidence + support_weight * supports - contradiction_weight * contradicts
+    raw = edge_score * decay_factor
 
     # Clamp to [0, 1]
     return max(0.0, min(1.0, raw))

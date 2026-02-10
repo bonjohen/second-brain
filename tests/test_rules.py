@@ -79,6 +79,18 @@ class TestConfidence:
         conf = compute_confidence(belief.belief_id, belief_service, edge_service)
         assert conf <= 1.0
 
+    def test_confidence_custom_weights(self, belief_service, edge_service):
+        belief = belief_service.create_belief(claim_text="Custom weights test")
+        edge_service.create_edge(
+            EntityType.NOTE, uuid.uuid4(), RelType.SUPPORTS, EntityType.BELIEF, belief.belief_id
+        )
+        # With higher support weight, one edge should boost confidence more
+        conf_default = compute_confidence(belief.belief_id, belief_service, edge_service)
+        conf_custom = compute_confidence(
+            belief.belief_id, belief_service, edge_service, support_weight=0.3
+        )
+        assert conf_custom > conf_default
+
 
 class TestContradictions:
     def test_is_negation_not_insertion(self):

@@ -61,3 +61,8 @@ class TestIngestionAgent:
     def test_extract_entities_deduplicates(self):
         entities = IngestionAgent.extract_entities("@Alice @alice @ALICE")
         assert entities == ["alice"]
+
+    def test_extract_tags_truncates_long_tags(self):
+        long_tag = "#" + "a" * 200
+        tags = IngestionAgent.extract_tags(f"text {long_tag} #short")
+        assert tags == ["short"]  # long tag filtered out

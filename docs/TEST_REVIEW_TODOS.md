@@ -54,15 +54,15 @@ The project has a solid foundation: 191 tests cover happy paths well across all 
 
 ## Low (hardening)
 
-- [ ] **Input Validation & Boundaries** `agents/ingestion.py:extract_tags` -- Tag regex `#(\w[\w/-]*)` has no length limit. A tag like `#aaaa...` (10000 chars) will be stored without truncation. **Risk**: DB bloat, display issues. **Action**: Add a max tag length (e.g. 100 chars) in the extraction regex or post-filter; add a test with a very long tag.
+- [X] **Input Validation & Boundaries** `agents/ingestion.py:extract_tags` -- Tag regex `#(\w[\w/-]*)` has no length limit. A tag like `#aaaa...` (10000 chars) will be stored without truncation. **Risk**: DB bloat, display issues. **Action**: Add a max tag length (e.g. 100 chars) in the extraction regex or post-filter; add a test with a very long tag.
 
-- [ ] **API Design & Contracts** `core/models.py:139-149` -- `Edge` model allows `from_id == to_id` (self-loops). **Risk**: Self-referential edges could confuse graph traversal logic in confidence computation or contradiction detection. **Action**: Add a Pydantic validator that rejects `from_id == to_id` when `from_type == to_type`; add a test.
+- [X] **API Design & Contracts** `core/models.py:139-149` -- `Edge` model allows `from_id == to_id` (self-loops). **Risk**: Self-referential edges could confuse graph traversal logic in confidence computation or contradiction detection. **Action**: Add a Pydantic validator that rejects `from_id == to_id` when `from_type == to_type`; add a test.
 
-- [ ] **Configuration & Environment** `core/rules/confidence.py:58` -- The confidence formula `0.5 + 0.1 * supports - 0.1 * contradicts` uses hardcoded weights. Changing the formula requires editing source code. **Risk**: No tunability without code changes. **Action**: Extract weights to a config dict or constructor params; add a test that overrides the weights.
+- [X] **Configuration & Environment** `core/rules/confidence.py:58` -- The confidence formula `0.5 + 0.1 * supports - 0.1 * contradicts` uses hardcoded weights. Changing the formula requires editing source code. **Risk**: No tunability without code changes. **Action**: Extract weights to a config dict or constructor params; add a test that overrides the weights.
 
-- [ ] **Observability & Operability** `runtime/scheduler.py:38-43` -- Step failures are caught with a bare `except Exception` and logged, but no metrics, retry counts, or alerting mechanism exists. **Risk**: Persistently failing agents go unnoticed. **Action**: Add a failure counter per step; add a test that verifies failure count increments on repeated failures.
+- [X] **Observability & Operability** `runtime/scheduler.py:38-43` -- Step failures are caught with a bare `except Exception` and logged, but no metrics, retry counts, or alerting mechanism exists. **Risk**: Persistently failing agents go unnoticed. **Action**: Add a failure counter per step; add a test that verifies failure count increments on repeated failures.
 
-- [ ] **Input Validation & Boundaries** `core/models.py:104-113` -- `Signal.payload` is `dict[str, Any]` with no schema validation. A signal with a 100MB payload would be serialized to JSON and stored. **Risk**: Memory/disk exhaustion from oversized payloads. **Action**: Add a Pydantic validator limiting payload to reasonable size (e.g. 64KB serialized); add a test.
+- [X] **Input Validation & Boundaries** `core/models.py:104-113` -- `Signal.payload` is `dict[str, Any]` with no schema validation. A signal with a 100MB payload would be serialized to JSON and stored. **Risk**: Memory/disk exhaustion from oversized payloads. **Action**: Add a Pydantic validator limiting payload to reasonable size (e.g. 64KB serialized); add a test.
 
 - [X] **Error Handling & Failure Modes** `agents/curator.py:57-81` -- `archive_cold_beliefs()` catches no exceptions. If `update_belief_status()` raises for one belief (e.g. invalid transition), the entire archival loop aborts. **Risk**: One bad belief prevents archival of all subsequent beliefs in the batch. **Action**: Add per-belief try/except with logging; add a test where one belief in ARCHIVED status is mixed in with DEPRECATED beliefs.
 
