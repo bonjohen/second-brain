@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import shutil
 import sys
 import uuid
@@ -11,6 +12,8 @@ from pathlib import Path
 import click
 
 from second_brain.core.models import ContentType, SourceKind, TrustLabel
+
+logger = logging.getLogger(__name__)
 
 
 def _get_services(db_path: str | None = None):
@@ -37,7 +40,9 @@ def _get_services(db_path: str | None = None):
 
         vector_store = VectorStore(db)
     except ImportError:
-        pass
+        logger.warning(
+            "sentence-transformers not installed; vector search disabled (FTS-only mode)"
+        )
 
     agent = IngestionAgent(notes, signals, vector_store=vector_store)
     return db, notes, signals, agent, edges, beliefs, vector_store, audit
@@ -423,6 +428,13 @@ def restore(ctx: click.Context, snapshot_path: str) -> None:
 
     db_path = ctx.obj["db_path"] or str(DEFAULT_DB_PATH)
     target = Path(db_path)
+
+    # Auto-snapshot current database before overwriting
+    if target.exists():
+        ts = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+        backup_path = target.parent / f"brain_pre_restore_{ts}.db"
+        shutil.copy2(str(target), str(backup_path))
+        click.echo(f"Current database backed up to: {backup_path}")
 
     shutil.copy2(str(snap), str(target))
     click.echo(f"Database restored from: {snapshot_path}")

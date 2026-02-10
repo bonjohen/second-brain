@@ -74,7 +74,7 @@ class SynthesisAgent:
         # Also check existing notes for same tags
         all_groups: dict[str, list] = {}
         for tag, tag_notes in tag_groups.items():
-            existing = self._notes.list_notes(tag=tag, limit=100)
+            existing = self._paginate_notes(tag=tag)
             merged_ids = {str(n.note_id) for n in tag_notes}
             for en in existing:
                 if str(en.note_id) not in merged_ids:
@@ -84,7 +84,7 @@ class SynthesisAgent:
                 all_groups[f"tag:{tag}"] = tag_notes
 
         for entity, entity_notes in entity_groups.items():
-            existing = self._notes.list_notes(entity=entity, limit=100)
+            existing = self._paginate_notes(entity=entity)
             merged_ids = {str(n.note_id) for n in entity_notes}
             for en in existing:
                 if str(en.note_id) not in merged_ids:
@@ -124,3 +124,16 @@ class SynthesisAgent:
             created.append(belief.belief_id)
 
         return created
+
+    def _paginate_notes(self, **filters) -> list:
+        """Paginate through all matching notes."""
+        all_notes: list = []
+        offset = 0
+        batch_size = 500
+        while True:
+            batch = self._notes.list_notes(limit=batch_size, offset=offset, **filters)
+            if not batch:
+                break
+            all_notes.extend(batch)
+            offset += batch_size
+        return all_notes

@@ -1,5 +1,7 @@
 """Tests for CLI commands via Click CliRunner."""
 
+import logging
+
 from click.testing import CliRunner
 
 from second_brain.cli.main import cli
@@ -206,3 +208,31 @@ class TestCLI:
         result = runner.invoke(cli, [*opts, "trust", source_id, "trusted"])
         assert result.exit_code == 0
         assert "trust updated" in result.output.lower()
+
+    def test_vector_store_import_warning(self, tmp_path, caplog):
+        """When sentence-transformers is unavailable, a warning should be logged."""
+        import sys
+        from unittest.mock import patch
+
+        # Make the vector module temporarily unimportable
+        with (
+            patch.dict(sys.modules, {"second_brain.storage.vector": None}),
+            caplog.at_level(logging.WARNING, logger="second_brain.cli.main"),
+        ):
+            runner, opts = self._runner(tmp_path)
+            runner.invoke(cli, [*opts, "search", "test"])
+
+        assert any("sentence-transformers" in r.message for r in caplog.records)
+
+    def test_restore_creates_backup(self, tmp_path):
+        """Restore should auto-snapshot the current database before overwriting."""
+        runner, opts = self._runner(tmp_path)
+        runner.invoke(cli, [*opts, "add", "Original note"])
+
+        snap_path = str(tmp_path / "backup.db")
+        runner.invoke(cli, [*opts, "snapshot", snap_path])
+
+        result = runner.invoke(cli, [*opts, "restore", snap_path])
+        assert result.exit_code == 0
+        assert "backed up to" in result.output
+        assert "restored" in result.output.lower()

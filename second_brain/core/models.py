@@ -5,7 +5,7 @@ from __future__ import annotations
 import enum
 import uuid
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, ClassVar
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -88,11 +88,17 @@ class Note(BaseModel):
     entities: list[str] = Field(default_factory=list)
     content_hash: str = ""
 
+    MAX_CONTENT_LENGTH: ClassVar[int] = 102_400  # 100 KB
+
     @field_validator("content")
     @classmethod
     def content_must_not_be_empty(cls, v: str) -> str:
         if not v or not v.strip():
             raise ValueError("Note content must not be empty")
+        if len(v) > cls.MAX_CONTENT_LENGTH:
+            raise ValueError(
+                f"Note content exceeds maximum length of {cls.MAX_CONTENT_LENGTH} characters"
+            )
         return v
 
     @field_validator("tags", "entities")

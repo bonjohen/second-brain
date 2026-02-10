@@ -28,32 +28,43 @@ def auto_transition_beliefs(
     deprecated: list[uuid.UUID] = []
 
     # proposed -> active: confidence >= threshold AND no contradictions
-    proposed = belief_service.list_beliefs(
-        status_filter=BeliefStatus.PROPOSED, limit=1000
-    )
-    for belief in proposed:
-        conf = compute_confidence(belief.belief_id, belief_service, edge_service)
-        contradictions = detect_contradictions(
-            belief.belief_id, belief_service, edge_service
+    offset = 0
+    batch_size = 500
+    while True:
+        proposed = belief_service.list_beliefs(
+            status_filter=BeliefStatus.PROPOSED, limit=batch_size, offset=offset
         )
-        if conf >= activation_threshold and not contradictions:
-            belief_service.update_belief_status(
-                belief.belief_id, BeliefStatus.ACTIVE
+        if not proposed:
+            break
+        for belief in proposed:
+            conf = compute_confidence(belief.belief_id, belief_service, edge_service)
+            contradictions = detect_contradictions(
+                belief.belief_id, belief_service, edge_service
             )
-            belief_service.update_confidence(belief.belief_id, conf)
-            activated.append(belief.belief_id)
+            if conf >= activation_threshold and not contradictions:
+                belief_service.update_belief_status(
+                    belief.belief_id, BeliefStatus.ACTIVE
+                )
+                belief_service.update_confidence(belief.belief_id, conf)
+                activated.append(belief.belief_id)
+        offset += batch_size
 
     # challenged -> deprecated: confidence below threshold (counterevidence dominates)
-    challenged = belief_service.list_beliefs(
-        status_filter=BeliefStatus.CHALLENGED, limit=1000
-    )
-    for belief in challenged:
-        conf = compute_confidence(belief.belief_id, belief_service, edge_service)
-        if conf < deprecation_threshold:
-            belief_service.update_belief_status(
-                belief.belief_id, BeliefStatus.DEPRECATED
-            )
-            belief_service.update_confidence(belief.belief_id, conf)
-            deprecated.append(belief.belief_id)
+    offset = 0
+    while True:
+        challenged = belief_service.list_beliefs(
+            status_filter=BeliefStatus.CHALLENGED, limit=batch_size, offset=offset
+        )
+        if not challenged:
+            break
+        for belief in challenged:
+            conf = compute_confidence(belief.belief_id, belief_service, edge_service)
+            if conf < deprecation_threshold:
+                belief_service.update_belief_status(
+                    belief.belief_id, BeliefStatus.DEPRECATED
+                )
+                belief_service.update_confidence(belief.belief_id, conf)
+                deprecated.append(belief.belief_id)
+        offset += batch_size
 
     return {"activated": activated, "deprecated": deprecated}

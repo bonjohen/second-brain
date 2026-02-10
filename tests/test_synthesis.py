@@ -100,3 +100,30 @@ class TestSynthesisAgent:
         # Second run with no new signals
         result2 = agent.run()
         assert result2 == []
+
+    def test_run_paginates_existing_notes(
+        self, note_service, belief_service, edge_service, signal_service
+    ):
+        """Synthesis should paginate when fetching existing notes for a tag."""
+        agent = self._make_agent(note_service, belief_service, edge_service, signal_service)
+
+        # Track calls to list_notes to verify pagination is used
+        original_list = note_service.list_notes
+        calls: list[dict] = []
+
+        def tracking_list(*args, **kwargs):
+            calls.append(kwargs.copy())
+            return original_list(*args, **kwargs)
+
+        note_service.list_notes = tracking_list
+
+        self._add_note(note_service, signal_service, "Paginate A #pagtest", tags=["pagtest"])
+        self._add_note(note_service, signal_service, "Paginate B #pagtest", tags=["pagtest"])
+        agent.run()
+
+        # Should have used pagination (offset-based calls)
+        tag_calls = [c for c in calls if c.get("tag") == "pagtest"]
+        assert len(tag_calls) >= 1
+        assert "offset" in tag_calls[0]
+
+        note_service.list_notes = original_list

@@ -68,3 +68,31 @@ class TestLifecycle:
 
         result = auto_transition_beliefs(belief_service, edge_service)
         assert b.belief_id not in result["deprecated"]
+
+    def test_paginates_proposed_beliefs(self, belief_service, edge_service):
+        """auto_transition should paginate and not miss beliefs beyond one batch."""
+        # Track calls to list_beliefs
+        original_list = belief_service.list_beliefs
+        calls: list[dict] = []
+
+        def tracking_list(*args, **kwargs):
+            calls.append(kwargs.copy())
+            return original_list(*args, **kwargs)
+
+        belief_service.list_beliefs = tracking_list
+
+        # Create 3 proposed beliefs
+        for i in range(3):
+            belief_service.create_belief(claim_text=f"Paginated belief {i}")
+
+        auto_transition_beliefs(belief_service, edge_service)
+
+        # Pagination should have made at least 2 calls for proposed
+        # (one returning results, one returning empty)
+        proposed_calls = [
+            c for c in calls
+            if c.get("status_filter") == "proposed"
+        ]
+        assert len(proposed_calls) >= 2
+
+        belief_service.list_beliefs = original_list

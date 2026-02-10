@@ -87,12 +87,13 @@ class EdgeService:
         )
         return [self._row_to_edge(row) for row in rows]
 
-    def delete_edge(self, edge_id: uuid.UUID) -> None:
-        """Delete an edge by ID."""
-        self._db.execute(
+    def delete_edge(self, edge_id: uuid.UUID) -> bool:
+        """Delete an edge by ID. Returns True if an edge was deleted, False if not found."""
+        cursor = self._db.execute(
             "DELETE FROM edges WHERE edge_id = ?",
             (str(edge_id),),
         )
+        return cursor.rowcount > 0
 
     @staticmethod
     def _row_to_edge(row: Any) -> Edge:

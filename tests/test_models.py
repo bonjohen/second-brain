@@ -109,6 +109,10 @@ class TestNote:
         with pytest.raises(ValidationError, match="must not be empty"):
             Note(content="   \n  ", source_id=uuid.uuid4())
 
+    def test_oversized_content_rejected(self):
+        with pytest.raises(ValidationError, match="maximum length"):
+            Note(content="x" * 102_401, source_id=uuid.uuid4())
+
     def test_tags_normalized(self):
         n = Note(content="test", source_id=uuid.uuid4(), tags=["Python", " RUST ", ""])
         assert n.tags == ["python", "rust"]
