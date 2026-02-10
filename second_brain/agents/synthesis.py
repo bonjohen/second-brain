@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 from collections import defaultdict
 
@@ -10,6 +11,8 @@ from second_brain.core.services.beliefs import BeliefService
 from second_brain.core.services.edges import EdgeService
 from second_brain.core.services.notes import NoteService
 from second_brain.core.services.signals import SignalService
+
+logger = logging.getLogger(__name__)
 
 
 class SynthesisAgent:
@@ -46,10 +49,15 @@ class SynthesisAgent:
         # Collect note IDs from signals
         note_ids: list[uuid.UUID] = []
         for signal in signals:
-            nid = signal.payload.get("note_id")
-            if nid:
-                note_ids.append(uuid.UUID(nid))
-            self._signals.mark_processed(signal.signal_id)
+            try:
+                nid = signal.payload.get("note_id")
+                if nid:
+                    note_ids.append(uuid.UUID(nid))
+                self._signals.mark_processed(signal.signal_id)
+            except Exception:
+                logger.exception(
+                    "Failed to process signal %s; skipping", signal.signal_id
+                )
 
         # Load notes
         notes = []

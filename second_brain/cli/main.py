@@ -93,18 +93,20 @@ def add(
         raise SystemExit(1)
 
     db, _notes, _signals, agent, *_ = _get_services(ctx.obj["db_path"])
-    source, note = agent.ingest(
-        content=content,
-        content_type=ContentType(content_type),
-        source_kind=SourceKind(source_kind),
-        extra_tags=list(tags) if tags else None,
-    )
-    click.echo(f"Note created: {note.note_id}")
-    if note.tags:
-        click.echo(f"Tags: {', '.join(note.tags)}")
-    if note.entities:
-        click.echo(f"Entities: {', '.join(note.entities)}")
-    db.close()
+    try:
+        source, note = agent.ingest(
+            content=content,
+            content_type=ContentType(content_type),
+            source_kind=SourceKind(source_kind),
+            extra_tags=list(tags) if tags else None,
+        )
+        click.echo(f"Note created: {note.note_id}")
+        if note.tags:
+            click.echo(f"Tags: {', '.join(note.tags)}")
+        if note.entities:
+            click.echo(f"Entities: {', '.join(note.entities)}")
+    finally:
+        db.close()
 
 
 @cli.command()
@@ -114,16 +116,18 @@ def add(
 def search(ctx: click.Context, query: str, limit: int) -> None:
     """Search notes by keyword (FTS5)."""
     db, notes_svc, *_ = _get_services(ctx.obj["db_path"])
-    results = notes_svc.search_notes(query)[:limit]
-    if not results:
-        click.echo("No results found.")
-    else:
-        for note in results:
-            snippet = note.content[:120].replace("\n", " ")
-            click.echo(f"[{note.note_id}] {snippet}")
-            if note.tags:
-                click.echo(f"  tags: {', '.join(note.tags)}")
-    db.close()
+    try:
+        results = notes_svc.search_notes(query)[:limit]
+        if not results:
+            click.echo("No results found.")
+        else:
+            for note in results:
+                snippet = note.content[:120].replace("\n", " ")
+                click.echo(f"[{note.note_id}] {snippet}")
+                if note.tags:
+                    click.echo(f"  tags: {', '.join(note.tags)}")
+    finally:
+        db.close()
 
 
 @cli.command()
@@ -133,28 +137,30 @@ def show(ctx: click.Context, note_id: str) -> None:
     """Show a note by ID."""
     db, notes_svc, *_ = _get_services(ctx.obj["db_path"])
     try:
-        uid = uuid.UUID(note_id)
-    except ValueError:
-        click.echo(f"Error: invalid UUID: {note_id}", err=True)
-        raise SystemExit(1) from None
+        try:
+            uid = uuid.UUID(note_id)
+        except ValueError:
+            click.echo(f"Error: invalid UUID: {note_id}", err=True)
+            raise SystemExit(1) from None
 
-    note = notes_svc.get_note(uid)
-    if note is None:
-        click.echo(f"Note not found: {note_id}", err=True)
-        raise SystemExit(1)
+        note = notes_svc.get_note(uid)
+        if note is None:
+            click.echo(f"Note not found: {note_id}", err=True)
+            raise SystemExit(1)
 
-    source = notes_svc.get_source(note.source_id)
+        source = notes_svc.get_source(note.source_id)
 
-    click.echo(f"ID:           {note.note_id}")
-    click.echo(f"Created:      {note.created_at.isoformat()}")
-    click.echo(f"Type:         {note.content_type.value}")
-    click.echo(f"Hash:         {note.content_hash}")
-    click.echo(f"Source:       {source.kind.value if source else 'unknown'} ({note.source_id})")
-    click.echo(f"Tags:         {', '.join(note.tags) if note.tags else '(none)'}")
-    click.echo(f"Entities:     {', '.join(note.entities) if note.entities else '(none)'}")
-    click.echo("---")
-    click.echo(note.content)
-    db.close()
+        click.echo(f"ID:           {note.note_id}")
+        click.echo(f"Created:      {note.created_at.isoformat()}")
+        click.echo(f"Type:         {note.content_type.value}")
+        click.echo(f"Hash:         {note.content_hash}")
+        click.echo(f"Source:       {source.kind.value if source else 'unknown'} ({note.source_id})")
+        click.echo(f"Tags:         {', '.join(note.tags) if note.tags else '(none)'}")
+        click.echo(f"Entities:     {', '.join(note.entities) if note.entities else '(none)'}")
+        click.echo("---")
+        click.echo(note.content)
+    finally:
+        db.close()
 
 
 @cli.command()
@@ -166,87 +172,86 @@ def ask(ctx: click.Context, question: str, top_k: int) -> None:
     db, notes_svc, _signals, _agent, edges_svc, beliefs_svc, vector_store, _audit = (
         _get_services(ctx.obj["db_path"])
     )
+    try:
+        from second_brain.core.models import EntityType
 
-    from second_brain.core.models import EntityType
+        # 1. FTS keyword search
+        fts_results = notes_svc.search_notes(question)[:top_k]
 
-    # 1. FTS keyword search
-    fts_results = notes_svc.search_notes(question)[:top_k]
+        # 2. Vector similarity search (if available)
+        vector_results = []
+        if vector_store is not None:
+            try:
+                similar = vector_store.search_similar(question, top_k=top_k)
+                for note_id_str, score in similar:
+                    note = notes_svc.get_note(uuid.UUID(note_id_str))
+                    if note:
+                        vector_results.append((note, score))
+            except Exception:
+                logger.warning("Vector search failed; falling back to FTS-only", exc_info=True)
 
-    # 2. Vector similarity search (if available)
-    vector_results = []
-    if vector_store is not None:
-        try:
-            similar = vector_store.search_similar(question, top_k=top_k)
-            for note_id_str, score in similar:
-                note = notes_svc.get_note(uuid.UUID(note_id_str))
-                if note:
-                    vector_results.append((note, score))
-        except Exception:
-            pass  # graceful fallback if embeddings not available
+        # 3. Merge/dedup results
+        seen: set[str] = set()
+        evidence = []
+        for note in fts_results:
+            nid = str(note.note_id)
+            if nid not in seen:
+                seen.add(nid)
+                evidence.append(note)
 
-    # 3. Merge/dedup results
-    seen: set[str] = set()
-    evidence = []
-    for note in fts_results:
-        nid = str(note.note_id)
-        if nid not in seen:
-            seen.add(nid)
-            evidence.append(note)
+        for note, _score in vector_results:
+            nid = str(note.note_id)
+            if nid not in seen:
+                seen.add(nid)
+                evidence.append(note)
 
-    for note, _score in vector_results:
-        nid = str(note.note_id)
-        if nid not in seen:
-            seen.add(nid)
-            evidence.append(note)
+        # 4. Retrieve related beliefs via edges from matching notes
+        related_beliefs = []
+        belief_ids_seen: set[str] = set()
+        for note in evidence:
+            edges = edges_svc.get_edges(EntityType.NOTE, note.note_id, direction="outgoing")
+            for edge in edges:
+                if edge.to_type == EntityType.BELIEF:
+                    bid_str = str(edge.to_id)
+                    if bid_str not in belief_ids_seen:
+                        belief_ids_seen.add(bid_str)
+                        belief = beliefs_svc.get_belief(edge.to_id)
+                        if belief:
+                            related_beliefs.append(belief)
 
-    # 4. Retrieve related beliefs via edges from matching notes
-    related_beliefs = []
-    belief_ids_seen: set[str] = set()
-    for note in evidence:
-        edges = edges_svc.get_edges(EntityType.NOTE, note.note_id, direction="outgoing")
-        for edge in edges:
-            if edge.to_type == EntityType.BELIEF:
-                bid_str = str(edge.to_id)
-                if bid_str not in belief_ids_seen:
-                    belief_ids_seen.add(bid_str)
-                    belief = beliefs_svc.get_belief(edge.to_id)
-                    if belief:
-                        related_beliefs.append(belief)
+        # 5. Display results
+        if not evidence and not related_beliefs:
+            click.echo("No evidence found.")
+            return
 
-    # 5. Display results
-    if not evidence and not related_beliefs:
-        click.echo("No evidence found.")
-        db.close()
-        return
+        if evidence:
+            click.echo("=== Evidence Notes ===")
+            for i, note in enumerate(evidence, 1):
+                snippet = note.content[:200].replace("\n", " ")
+                click.echo(f"  [{i}] ({note.note_id}) {snippet}")
+                if note.tags:
+                    click.echo(f"      tags: {', '.join(note.tags)}")
 
-    if evidence:
-        click.echo("=== Evidence Notes ===")
+        if related_beliefs:
+            click.echo("\n=== Related Beliefs ===")
+            for belief in related_beliefs:
+                click.echo(
+                    f"  - [{belief.status.value}] (confidence: {belief.confidence:.2f}) "
+                    f"{belief.claim_text}"
+                )
+
+        click.echo("\n=== Answer ===")
+        click.echo(f"Based on {len(evidence)} evidence note(s):")
         for i, note in enumerate(evidence, 1):
-            snippet = note.content[:200].replace("\n", " ")
-            click.echo(f"  [{i}] ({note.note_id}) {snippet}")
-            if note.tags:
-                click.echo(f"      tags: {', '.join(note.tags)}")
+            first_line = note.content.split("\n")[0][:100]
+            click.echo(f"  [{i}] {first_line}")
 
-    if related_beliefs:
-        click.echo("\n=== Related Beliefs ===")
-        for belief in related_beliefs:
-            click.echo(
-                f"  - [{belief.status.value}] (confidence: {belief.confidence:.2f}) "
-                f"{belief.claim_text}"
-            )
-
-    click.echo("\n=== Answer ===")
-    click.echo(f"Based on {len(evidence)} evidence note(s):")
-    for i, note in enumerate(evidence, 1):
-        first_line = note.content.split("\n")[0][:100]
-        click.echo(f"  [{i}] {first_line}")
-
-    if related_beliefs:
-        click.echo(f"\nRelated beliefs ({len(related_beliefs)}):")
-        for belief in related_beliefs:
-            click.echo(f"  - {belief.claim_text} (confidence: {belief.confidence:.2f})")
-
-    db.close()
+        if related_beliefs:
+            click.echo(f"\nRelated beliefs ({len(related_beliefs)}):")
+            for belief in related_beliefs:
+                click.echo(f"  - {belief.claim_text} (confidence: {belief.confidence:.2f})")
+    finally:
+        db.close()
 
 
 # ── Phase 2 Commands ──────────────────────────────────────────────────
@@ -261,21 +266,23 @@ def confirm(ctx: click.Context, belief_id: str) -> None:
         ctx.obj["db_path"]
     )
     try:
-        bid = uuid.UUID(belief_id)
-    except ValueError:
-        click.echo(f"Error: invalid UUID: {belief_id}", err=True)
-        raise SystemExit(1) from None
+        try:
+            bid = uuid.UUID(belief_id)
+        except ValueError:
+            click.echo(f"Error: invalid UUID: {belief_id}", err=True)
+            raise SystemExit(1) from None
 
-    belief = beliefs_svc.get_belief(bid)
-    if belief is None:
-        click.echo(f"Belief not found: {belief_id}", err=True)
-        raise SystemExit(1)
+        belief = beliefs_svc.get_belief(bid)
+        if belief is None:
+            click.echo(f"Belief not found: {belief_id}", err=True)
+            raise SystemExit(1)
 
-    new_conf = min(1.0, belief.confidence + 0.1)
-    beliefs_svc.update_confidence(bid, new_conf)
-    signals.emit("belief_confirmed", {"belief_id": str(bid)})
-    click.echo(f"Belief confirmed. Confidence: {belief.confidence:.2f} -> {new_conf:.2f}")
-    db.close()
+        new_conf = min(1.0, belief.confidence + 0.1)
+        beliefs_svc.update_confidence(bid, new_conf)
+        signals.emit("belief_confirmed", {"belief_id": str(bid)})
+        click.echo(f"Belief confirmed. Confidence: {belief.confidence:.2f} -> {new_conf:.2f}")
+    finally:
+        db.close()
 
 
 @cli.command()
@@ -287,21 +294,23 @@ def refute(ctx: click.Context, belief_id: str) -> None:
         ctx.obj["db_path"]
     )
     try:
-        bid = uuid.UUID(belief_id)
-    except ValueError:
-        click.echo(f"Error: invalid UUID: {belief_id}", err=True)
-        raise SystemExit(1) from None
+        try:
+            bid = uuid.UUID(belief_id)
+        except ValueError:
+            click.echo(f"Error: invalid UUID: {belief_id}", err=True)
+            raise SystemExit(1) from None
 
-    belief = beliefs_svc.get_belief(bid)
-    if belief is None:
-        click.echo(f"Belief not found: {belief_id}", err=True)
-        raise SystemExit(1)
+        belief = beliefs_svc.get_belief(bid)
+        if belief is None:
+            click.echo(f"Belief not found: {belief_id}", err=True)
+            raise SystemExit(1)
 
-    new_conf = max(0.0, belief.confidence - 0.1)
-    beliefs_svc.update_confidence(bid, new_conf)
-    signals.emit("belief_refuted", {"belief_id": str(bid)})
-    click.echo(f"Belief refuted. Confidence: {belief.confidence:.2f} -> {new_conf:.2f}")
-    db.close()
+        new_conf = max(0.0, belief.confidence - 0.1)
+        beliefs_svc.update_confidence(bid, new_conf)
+        signals.emit("belief_refuted", {"belief_id": str(bid)})
+        click.echo(f"Belief refuted. Confidence: {belief.confidence:.2f} -> {new_conf:.2f}")
+    finally:
+        db.close()
 
 
 @cli.command()
@@ -312,23 +321,25 @@ def trust(ctx: click.Context, source_id: str, level: str) -> None:
     """Update trust level for a source."""
     db, notes_svc, signals, *_ = _get_services(ctx.obj["db_path"])
     try:
-        sid = uuid.UUID(source_id)
-    except ValueError:
-        click.echo(f"Error: invalid UUID: {source_id}", err=True)
-        raise SystemExit(1) from None
+        try:
+            sid = uuid.UUID(source_id)
+        except ValueError:
+            click.echo(f"Error: invalid UUID: {source_id}", err=True)
+            raise SystemExit(1) from None
 
-    try:
-        notes_svc.update_source_trust(sid, TrustLabel(level))
-    except ValueError as exc:
-        click.echo(f"Error: {exc}", err=True)
-        raise SystemExit(1) from None
+        try:
+            notes_svc.update_source_trust(sid, TrustLabel(level))
+        except ValueError as exc:
+            click.echo(f"Error: {exc}", err=True)
+            raise SystemExit(1) from None
 
-    signals.emit(
-        "source_trust_updated",
-        {"source_id": str(sid), "new_level": level},
-    )
-    click.echo(f"Source {sid} trust updated to: {level}")
-    db.close()
+        signals.emit(
+            "source_trust_updated",
+            {"source_id": str(sid), "new_level": level},
+        )
+        click.echo(f"Source {sid} trust updated to: {level}")
+    finally:
+        db.close()
 
 
 @cli.command()
@@ -340,57 +351,57 @@ def report(ctx: click.Context) -> None:
     db, notes_svc, _signals, _agent, edges_svc, beliefs_svc, _vs, _audit = _get_services(
         ctx.obj["db_path"]
     )
+    try:
+        # Summary counts
+        all_notes = notes_svc.list_notes(limit=100000)
+        click.echo("=== Knowledge Base Report ===")
+        click.echo(f"Total notes: {len(all_notes)}")
 
-    # Summary counts
-    all_notes = notes_svc.list_notes(limit=100000)
-    click.echo("=== Knowledge Base Report ===")
-    click.echo(f"Total notes: {len(all_notes)}")
+        for status in BeliefStatus:
+            beliefs = beliefs_svc.list_beliefs(status_filter=status, limit=100000)
+            if beliefs:
+                click.echo(f"Beliefs [{status.value}]: {len(beliefs)}")
 
-    for status in BeliefStatus:
-        beliefs = beliefs_svc.list_beliefs(status_filter=status, limit=100000)
-        if beliefs:
-            click.echo(f"Beliefs [{status.value}]: {len(beliefs)}")
+        # Active contradictions
+        click.echo("\n--- Active Contradictions ---")
+        challenged = beliefs_svc.list_beliefs(
+            status_filter=BeliefStatus.CHALLENGED, limit=100
+        )
+        if challenged:
+            for belief in challenged:
+                edges = edges_svc.get_edges(
+                    EntityType.BELIEF, belief.belief_id,
+                    direction="incoming", rel_type=RelType.CONTRADICTS,
+                )
+                click.echo(
+                    f"  {belief.claim_text} "
+                    f"(confidence: {belief.confidence:.2f}, contradictions: {len(edges)})"
+                )
+        else:
+            click.echo("  (none)")
 
-    # Active contradictions
-    click.echo("\n--- Active Contradictions ---")
-    challenged = beliefs_svc.list_beliefs(
-        status_filter=BeliefStatus.CHALLENGED, limit=100
-    )
-    if challenged:
-        for belief in challenged:
-            edges = edges_svc.get_edges(
-                EntityType.BELIEF, belief.belief_id,
-                direction="incoming", rel_type=RelType.CONTRADICTS,
-            )
-            click.echo(
-                f"  {belief.claim_text} "
-                f"(confidence: {belief.confidence:.2f}, contradictions: {len(edges)})"
-            )
-    else:
-        click.echo("  (none)")
+        # Beliefs approaching decay threshold
+        click.echo("\n--- Low Confidence Beliefs ---")
+        active = beliefs_svc.list_beliefs(status_filter=BeliefStatus.ACTIVE, limit=1000)
+        low_conf = [b for b in active if b.confidence < 0.3]
+        if low_conf:
+            for belief in low_conf:
+                click.echo(f"  {belief.claim_text} (confidence: {belief.confidence:.2f})")
+        else:
+            click.echo("  (none)")
 
-    # Beliefs approaching decay threshold
-    click.echo("\n--- Low Confidence Beliefs ---")
-    active = beliefs_svc.list_beliefs(status_filter=BeliefStatus.ACTIVE, limit=1000)
-    low_conf = [b for b in active if b.confidence < 0.3]
-    if low_conf:
-        for belief in low_conf:
-            click.echo(f"  {belief.claim_text} (confidence: {belief.confidence:.2f})")
-    else:
-        click.echo("  (none)")
-
-    # Recently archived
-    click.echo("\n--- Recently Archived ---")
-    archived = beliefs_svc.list_beliefs(
-        status_filter=BeliefStatus.ARCHIVED, limit=10
-    )
-    if archived:
-        for belief in archived:
-            click.echo(f"  {belief.claim_text}")
-    else:
-        click.echo("  (none)")
-
-    db.close()
+        # Recently archived
+        click.echo("\n--- Recently Archived ---")
+        archived = beliefs_svc.list_beliefs(
+            status_filter=BeliefStatus.ARCHIVED, limit=10
+        )
+        if archived:
+            for belief in archived:
+                click.echo(f"  {belief.claim_text}")
+        else:
+            click.echo("  (none)")
+    finally:
+        db.close()
 
 
 @cli.command()
@@ -454,19 +465,19 @@ def run_agents(ctx: click.Context, once: bool) -> None:
     db, notes_svc, signals, _agent, edges_svc, beliefs_svc, vs, audit = _get_services(
         ctx.obj["db_path"]
     )
+    try:
+        curator = CuratorAgent(notes_svc, beliefs_svc, edges_svc, signals, audit, vs)
+        challenger = ChallengerAgent(beliefs_svc, edges_svc, signals)
+        synthesis = SynthesisAgent(notes_svc, beliefs_svc, edges_svc, signals)
 
-    curator = CuratorAgent(notes_svc, beliefs_svc, edges_svc, signals, audit, vs)
-    challenger = ChallengerAgent(beliefs_svc, edges_svc, signals)
-    synthesis = SynthesisAgent(notes_svc, beliefs_svc, edges_svc, signals)
+        scheduler = Scheduler()
+        scheduler.register("curator", curator.run)
+        scheduler.register("lifecycle", lambda: auto_transition_beliefs(beliefs_svc, edges_svc))
+        scheduler.register("challenger", challenger.run)
+        scheduler.register("synthesis", synthesis.run)
 
-    scheduler = Scheduler()
-    scheduler.register("curator", curator.run)
-    scheduler.register("lifecycle", lambda: auto_transition_beliefs(beliefs_svc, edges_svc))
-    scheduler.register("challenger", challenger.run)
-    scheduler.register("synthesis", synthesis.run)
-
-    results = scheduler.run_once()
-    for name, result in results:
-        click.echo(f"  {name}: {result}")
-
-    db.close()
+        results = scheduler.run_once()
+        for name, result in results:
+            click.echo(f"  {name}: {result}")
+    finally:
+        db.close()

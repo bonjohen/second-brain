@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 
 from second_brain.core.models import (
@@ -13,6 +14,8 @@ from second_brain.core.models import (
 )
 from second_brain.core.services.notes import NoteService
 from second_brain.core.services.signals import SignalService
+
+logger = logging.getLogger(__name__)
 
 TAG_PATTERN = re.compile(r"#(\w[\w/-]*)", re.UNICODE)
 MAX_TAG_LENGTH = 100
@@ -72,8 +75,15 @@ class IngestionAgent:
         )
 
         if self._vector_store is not None:
-            embedding = self._vector_store.compute_embedding(note.content)
-            self._vector_store.store_embedding(str(note.note_id), embedding)
+            try:
+                embedding = self._vector_store.compute_embedding(note.content)
+                self._vector_store.store_embedding(str(note.note_id), embedding)
+            except Exception:
+                logger.warning(
+                    "Embedding computation failed for note %s; skipping vector index",
+                    note.note_id,
+                    exc_info=True,
+                )
 
         self._signals.emit(
             "new_note",

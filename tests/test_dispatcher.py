@@ -1,5 +1,7 @@
 """Tests for the signal dispatcher."""
 
+import pytest
+
 from second_brain.runtime.dispatcher import Dispatcher
 
 
@@ -77,11 +79,15 @@ class TestDispatcher:
 
         assert len(count_list) == 1
 
-    def test_dispatch_partial_handler_failure(self, signal_service):
-        """When handler B throws after handler A succeeds, the signal stays
-        unprocessed.  Next poll re-runs handler A, causing duplicate side effects.
+    @pytest.mark.xfail(
+        reason="Known limitation: partial handler failure causes duplicate side effects."
+    )
+    def test_dispatch_partial_handler_failure_no_duplicates(self, signal_service):
+        """Ideally, when handler B throws after handler A succeeds, handler A
+        should NOT re-run on retry.  Currently it does, causing duplicates.
 
-        This test documents the known limitation so future refactors can address it.
+        This test will start passing once the dispatcher tracks per-handler
+        completion.  Until then it is marked xfail.
         """
         dispatcher = Dispatcher(signal_service)
         side_effects: list[str] = []
@@ -96,7 +102,6 @@ class TestDispatcher:
         assert count == 0
         assert side_effects == ["A"]
 
-        # Second dispatch: signal still unprocessed, so A runs *again*
-        count = dispatcher.dispatch_once()
-        assert count == 0
-        assert side_effects == ["A", "A"]  # duplicate side effect from A
+        # Second dispatch: ideally only B retries; A should NOT re-run
+        dispatcher.dispatch_once()
+        assert side_effects == ["A"]  # desired: no duplicate from A

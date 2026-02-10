@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 
 from second_brain.core.models import BeliefStatus, EntityType, RelType
@@ -10,6 +11,8 @@ from second_brain.core.rules.contradictions import detect_contradictions
 from second_brain.core.services.beliefs import BeliefService
 from second_brain.core.services.edges import EdgeService
 from second_brain.core.services.signals import SignalService
+
+logger = logging.getLogger(__name__)
 
 
 class ChallengerAgent:
@@ -43,12 +46,17 @@ class ChallengerAgent:
         # Process belief_proposed signals
         signals = self._signals.get_unprocessed("belief_proposed")
         for signal in signals:
-            bid_str = signal.payload.get("belief_id")
-            if bid_str:
-                bid = uuid.UUID(bid_str)
-                challenged = self._check_contradictions(bid)
-                challenged_ids.extend(challenged)
-            self._signals.mark_processed(signal.signal_id)
+            try:
+                bid_str = signal.payload.get("belief_id")
+                if bid_str:
+                    bid = uuid.UUID(bid_str)
+                    challenged = self._check_contradictions(bid)
+                    challenged_ids.extend(challenged)
+                self._signals.mark_processed(signal.signal_id)
+            except Exception:
+                logger.exception(
+                    "Failed to process signal %s; skipping", signal.signal_id
+                )
 
         return challenged_ids
 
@@ -73,14 +81,15 @@ class ChallengerAgent:
                 to_id=other_id,
             )
 
+            # Recompute confidence BEFORE status transition to avoid
+            # inconsistent state if one operation fails.
+            new_conf = compute_confidence(other_id, self._beliefs, self._edges)
+            self._beliefs.update_confidence(other_id, new_conf)
+
             # Transition to challenged if currently active
             if other.status == BeliefStatus.ACTIVE:
                 self._beliefs.update_belief_status(other_id, BeliefStatus.CHALLENGED)
                 challenged.append(other_id)
-
-            # Recompute confidence for the contradicted belief
-            new_conf = compute_confidence(other_id, self._beliefs, self._edges)
-            self._beliefs.update_confidence(other_id, new_conf)
 
             self._signals.emit(
                 "belief_challenged",
