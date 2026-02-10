@@ -7,8 +7,14 @@ from pydantic import ValidationError
 
 from second_brain.core.models import (
     AuditEntry,
+    Belief,
+    BeliefStatus,
     ContentType,
+    DecayModel,
+    Edge,
+    EntityType,
     Note,
+    RelType,
     Signal,
     Source,
     SourceKind,
@@ -39,6 +45,36 @@ class TestEnums:
             TrustLabel.USER,
             TrustLabel.TRUSTED,
             TrustLabel.UNKNOWN,
+        }
+
+    def test_belief_status_values(self):
+        assert set(BeliefStatus) == {
+            BeliefStatus.PROPOSED,
+            BeliefStatus.ACTIVE,
+            BeliefStatus.CHALLENGED,
+            BeliefStatus.DEPRECATED,
+            BeliefStatus.ARCHIVED,
+        }
+
+    def test_decay_model_values(self):
+        assert set(DecayModel) == {
+            DecayModel.EXPONENTIAL,
+            DecayModel.NONE,
+        }
+
+    def test_entity_type_values(self):
+        assert set(EntityType) == {
+            EntityType.NOTE,
+            EntityType.BELIEF,
+            EntityType.SOURCE,
+        }
+
+    def test_rel_type_values(self):
+        assert set(RelType) == {
+            RelType.SUPPORTS,
+            RelType.CONTRADICTS,
+            RelType.DERIVED_FROM,
+            RelType.RELATED_TO,
         }
 
 
@@ -108,6 +144,61 @@ class TestSignal:
         s = Signal(type="test")
         with pytest.raises(ValidationError):
             s.type = "changed"
+
+
+class TestBelief:
+    def test_create_belief(self):
+        b = Belief(claim_text="Python is versatile")
+        assert isinstance(b.belief_id, uuid.UUID)
+        assert b.claim_text == "Python is versatile"
+        assert b.status == BeliefStatus.PROPOSED
+        assert b.confidence == 0.5
+        assert b.decay_model == DecayModel.EXPONENTIAL
+
+    def test_belief_empty_claim_rejected(self):
+        with pytest.raises(ValidationError, match="must not be empty"):
+            Belief(claim_text="")
+
+    def test_belief_whitespace_claim_rejected(self):
+        with pytest.raises(ValidationError, match="must not be empty"):
+            Belief(claim_text="   \n  ")
+
+    def test_belief_confidence_bounds(self):
+        with pytest.raises(ValidationError):
+            Belief(claim_text="test", confidence=1.5)
+        with pytest.raises(ValidationError):
+            Belief(claim_text="test", confidence=-0.1)
+
+    def test_belief_is_frozen(self):
+        b = Belief(claim_text="test")
+        with pytest.raises(ValidationError):
+            b.claim_text = "changed"
+
+
+class TestEdge:
+    def test_create_edge(self):
+        nid = uuid.uuid4()
+        bid = uuid.uuid4()
+        e = Edge(
+            from_type=EntityType.NOTE,
+            from_id=nid,
+            rel_type=RelType.SUPPORTS,
+            to_type=EntityType.BELIEF,
+            to_id=bid,
+        )
+        assert e.from_type == EntityType.NOTE
+        assert e.rel_type == RelType.SUPPORTS
+
+    def test_edge_is_frozen(self):
+        e = Edge(
+            from_type=EntityType.NOTE,
+            from_id=uuid.uuid4(),
+            rel_type=RelType.SUPPORTS,
+            to_type=EntityType.BELIEF,
+            to_id=uuid.uuid4(),
+        )
+        with pytest.raises(ValidationError):
+            e.rel_type = RelType.CONTRADICTS
 
 
 class TestAuditEntry:

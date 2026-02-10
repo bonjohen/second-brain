@@ -67,3 +67,47 @@ class TestCLI:
         runner, opts = self._runner(tmp_path)
         result = runner.invoke(cli, [*opts, "show", "00000000-0000-0000-0000-000000000000"])
         assert result.exit_code != 0
+
+    def test_ask_no_results(self, tmp_path):
+        runner, opts = self._runner(tmp_path)
+        result = runner.invoke(cli, [*opts, "ask", "nonexistent topic"])
+        assert result.exit_code == 0
+        assert "No evidence found" in result.output
+
+    def test_ask_finds_notes(self, tmp_path):
+        runner, opts = self._runner(tmp_path)
+        runner.invoke(cli, [*opts, "add", "Python is a versatile language #python"])
+        result = runner.invoke(cli, [*opts, "ask", "Python"])
+        assert result.exit_code == 0
+        assert "Evidence Notes" in result.output
+        assert "Python" in result.output
+
+    def test_ask_with_beliefs(self, tmp_path):
+        """Ask should show related beliefs when they exist."""
+        runner, opts = self._runner(tmp_path)
+        runner.invoke(cli, [*opts, "add", "Python basics #python"])
+        runner.invoke(cli, [*opts, "add", "Python advanced #python"])
+
+        # Run synthesis to create beliefs
+        from second_brain.agents.synthesis import SynthesisAgent
+        from second_brain.core.services.audit import AuditService
+        from second_brain.core.services.beliefs import BeliefService
+        from second_brain.core.services.edges import EdgeService
+        from second_brain.core.services.notes import NoteService
+        from second_brain.core.services.signals import SignalService
+        from second_brain.storage.sqlite import Database
+
+        db_path = str(tmp_path / "test.db")
+        db = Database(db_path)
+        audit = AuditService(db)
+        signals = SignalService(db)
+        notes = NoteService(db, audit)
+        edges = EdgeService(db)
+        beliefs = BeliefService(db, audit, edges)
+        synth = SynthesisAgent(notes, beliefs, edges, signals)
+        synth.run()
+        db.close()
+
+        result = runner.invoke(cli, [*opts, "ask", "Python"])
+        assert result.exit_code == 0
+        assert "Evidence Notes" in result.output

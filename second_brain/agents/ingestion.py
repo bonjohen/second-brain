@@ -25,16 +25,19 @@ class IngestionAgent:
     1. Create Source record.
     2. Extract tags (#word) and entities (@word).
     3. Create immutable Note with content_hash.
-    4. Emit signal:new_note.
+    4. Compute and store embedding (if vector_store provided).
+    5. Emit signal:new_note.
     """
 
     def __init__(
         self,
         note_service: NoteService,
         signal_service: SignalService,
+        vector_store=None,
     ) -> None:
         self._notes = note_service
         self._signals = signal_service
+        self._vector_store = vector_store
 
     def ingest(
         self,
@@ -66,6 +69,10 @@ class IngestionAgent:
             tags=tags,
             entities=entities,
         )
+
+        if self._vector_store is not None:
+            embedding = self._vector_store.compute_embedding(note.content)
+            self._vector_store.store_embedding(str(note.note_id), embedding)
 
         self._signals.emit(
             "new_note",

@@ -33,6 +33,32 @@ class TrustLabel(enum.StrEnum):
     UNKNOWN = "unknown"
 
 
+class BeliefStatus(enum.StrEnum):
+    PROPOSED = "proposed"
+    ACTIVE = "active"
+    CHALLENGED = "challenged"
+    DEPRECATED = "deprecated"
+    ARCHIVED = "archived"
+
+
+class DecayModel(enum.StrEnum):
+    EXPONENTIAL = "exponential"
+    NONE = "none"
+
+
+class EntityType(enum.StrEnum):
+    NOTE = "note"
+    BELIEF = "belief"
+    SOURCE = "source"
+
+
+class RelType(enum.StrEnum):
+    SUPPORTS = "supports"
+    CONTRADICTS = "contradicts"
+    DERIVED_FROM = "derived_from"
+    RELATED_TO = "related_to"
+
+
 # ── Domain Models ──────────────────────────────────────────────────────
 
 
@@ -85,6 +111,42 @@ class Signal(BaseModel):
     payload: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     processed_at: datetime | None = None
+
+
+class Belief(BaseModel):
+    """A derived claim with confidence and lifecycle management."""
+
+    model_config = {"frozen": True}
+
+    belief_id: uuid.UUID = Field(default_factory=uuid.uuid4)
+    claim_text: str
+    status: BeliefStatus = BeliefStatus.PROPOSED
+    confidence: float = Field(default=0.5, ge=0.0, le=1.0)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    decay_model: DecayModel = DecayModel.EXPONENTIAL
+    scope: dict[str, Any] = Field(default_factory=dict)
+    derived_from_agent: str = ""
+
+    @field_validator("claim_text")
+    @classmethod
+    def claim_text_must_not_be_empty(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("Belief claim_text must not be empty")
+        return v
+
+
+class Edge(BaseModel):
+    """A typed relationship between two entities (polymorphic)."""
+
+    model_config = {"frozen": True}
+
+    edge_id: uuid.UUID = Field(default_factory=uuid.uuid4)
+    from_type: EntityType
+    from_id: uuid.UUID
+    rel_type: RelType
+    to_type: EntityType
+    to_id: uuid.UUID
 
 
 class AuditEntry(BaseModel):

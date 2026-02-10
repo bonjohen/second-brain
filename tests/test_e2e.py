@@ -2,8 +2,13 @@
 
 from click.testing import CliRunner
 
+from second_brain.agents.challenger import ChallengerAgent
 from second_brain.agents.ingestion import IngestionAgent
+from second_brain.agents.synthesis import SynthesisAgent
+from second_brain.core.models import BeliefStatus, EntityType
 from second_brain.core.services.audit import AuditService
+from second_brain.core.services.beliefs import BeliefService
+from second_brain.core.services.edges import EdgeService
 from second_brain.core.services.notes import NoteService
 from second_brain.core.services.signals import SignalService
 from second_brain.storage.sqlite import Database
@@ -104,5 +109,59 @@ class TestEndToEnd:
         # Signals emitted for all
         all_signals = signals.get_unprocessed("new_note")
         assert len(all_signals) == 3
+
+        db.close()
+
+    def test_phase1_lifecycle(self, tmp_path):
+        """Phase 1 E2E: ingest → synthesize → challenge → ask."""
+        db_path = tmp_path / "phase1.db"
+        db = Database(db_path)
+        audit = AuditService(db)
+        signals = SignalService(db)
+        notes = NoteService(db, audit)
+        edges = EdgeService(db)
+        beliefs = BeliefService(db, audit, edges)
+        agent = IngestionAgent(notes, signals)
+
+        # 1. Ingest notes with shared tags
+        agent.ingest("Python is a versatile language #python")
+        agent.ingest("Python has great ecosystem #python")
+        agent.ingest("Python is slow for computation #python")
+
+        # 2. Synthesis: should create beliefs from shared tags
+        synth = SynthesisAgent(notes, beliefs, edges, signals)
+        created_beliefs = synth.run()
+        assert len(created_beliefs) >= 1
+
+        # Verify belief exists and has supports edges
+        belief = beliefs.get_belief(created_beliefs[0])
+        assert belief is not None
+        assert belief.status == BeliefStatus.PROPOSED
+        assert "python" in belief.claim_text.lower()
+
+        incoming_edges = edges.get_edges(
+            EntityType.BELIEF, belief.belief_id, direction="incoming"
+        )
+        assert len(incoming_edges) >= 2
+
+        # 3. Challenge: create contradicting beliefs
+        b_fast = beliefs.create_belief(claim_text="python is fast")
+        beliefs.update_belief_status(b_fast.belief_id, BeliefStatus.ACTIVE)
+        b_slow = beliefs.create_belief(claim_text="python is not fast")
+        signals.emit("belief_proposed", {"belief_id": str(b_slow.belief_id)})
+
+        challenger = ChallengerAgent(beliefs, edges, signals)
+        challenged = challenger.run()
+        assert b_fast.belief_id in challenged
+
+        # Verify challenged status
+        updated_fast = beliefs.get_belief(b_fast.belief_id)
+        assert updated_fast.status == BeliefStatus.CHALLENGED
+
+        # 4. Verify audit trail captures the full lifecycle
+        fast_history = audit.get_history("belief", b_fast.belief_id)
+        actions = [entry.action for entry in fast_history]
+        assert "created" in actions
+        assert "status_changed" in actions
 
         db.close()

@@ -29,6 +29,13 @@ class TestDatabase:
         names = {row["name"] for row in rows}
         assert {"sources", "notes", "signals", "audit_log", "_migrations"} <= names
 
+    def test_phase1_tables_exist(self, db):
+        rows = db.fetchall(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+        )
+        names = {row["name"] for row in rows}
+        assert {"beliefs", "edges", "embeddings"} <= names
+
     def test_fts5_table_exists(self, db):
         rows = db.fetchall(
             "SELECT name FROM sqlite_master WHERE type='table' AND name = 'notes_fts'"
@@ -40,6 +47,9 @@ class TestDatabase:
         filenames = [row["filename"] for row in rows]
         assert "001_initial_schema.sql" in filenames
         assert "002_fts5.sql" in filenames
+        assert "003_beliefs.sql" in filenames
+        assert "004_edges.sql" in filenames
+        assert "005_embeddings.sql" in filenames
 
     def test_foreign_key_enforcement(self, db):
         with pytest.raises(sqlite3.IntegrityError):
@@ -92,3 +102,45 @@ class TestDatabase:
             )
         row = db.fetchone("SELECT * FROM sources WHERE source_id = 'txn-test'")
         assert row is not None
+
+    def test_beliefs_status_check_constraint(self, db):
+        with pytest.raises(sqlite3.IntegrityError):
+            db.execute(
+                """
+                INSERT INTO beliefs
+                    (belief_id, claim_text, status, confidence, created_at, updated_at,
+                     decay_model, scope, derived_from_agent)
+                VALUES ('test-b', 'claim', 'invalid_status', 0.5, '2025-01-01', '2025-01-01',
+                        'exponential', '{}', '')
+                """
+            )
+
+    def test_beliefs_confidence_check_constraint(self, db):
+        with pytest.raises(sqlite3.IntegrityError):
+            db.execute(
+                """
+                INSERT INTO beliefs
+                    (belief_id, claim_text, status, confidence, created_at, updated_at,
+                     decay_model, scope, derived_from_agent)
+                VALUES ('test-b2', 'claim', 'proposed', 1.5, '2025-01-01', '2025-01-01',
+                        'exponential', '{}', '')
+                """
+            )
+
+    def test_edges_rel_type_check_constraint(self, db):
+        with pytest.raises(sqlite3.IntegrityError):
+            db.execute(
+                """
+                INSERT INTO edges (edge_id, from_type, from_id, rel_type, to_type, to_id)
+                VALUES ('test-e', 'note', 'id1', 'invalid_rel', 'belief', 'id2')
+                """
+            )
+
+    def test_edges_from_type_check_constraint(self, db):
+        with pytest.raises(sqlite3.IntegrityError):
+            db.execute(
+                """
+                INSERT INTO edges (edge_id, from_type, from_id, rel_type, to_type, to_id)
+                VALUES ('test-e2', 'invalid_type', 'id1', 'supports', 'belief', 'id2')
+                """
+            )

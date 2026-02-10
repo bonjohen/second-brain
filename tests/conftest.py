@@ -3,6 +3,8 @@
 import pytest
 
 from second_brain.core.services.audit import AuditService
+from second_brain.core.services.beliefs import BeliefService
+from second_brain.core.services.edges import EdgeService
 from second_brain.core.services.notes import NoteService
 from second_brain.core.services.signals import SignalService
 from second_brain.storage.sqlite import Database
@@ -30,3 +32,13 @@ def signal_service(db):
 @pytest.fixture
 def note_service(db, audit_service):
     return NoteService(db, audit_service)
+
+
+@pytest.fixture
+def edge_service(db):
+    return EdgeService(db)
+
+
+@pytest.fixture
+def belief_service(db, audit_service, edge_service):
+    return BeliefService(db, audit_service, edge_service)
