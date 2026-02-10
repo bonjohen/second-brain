@@ -11,6 +11,14 @@ from pathlib import Path
 
 import click
 
+from second_brain.core.constants import (
+    CONFIDENCE_STEP,
+    LOW_CONFIDENCE_THRESHOLD,
+    REPORT_QUERY_LIMIT,
+    SNIPPET_FIRST_LINE,
+    SNIPPET_MEDIUM,
+    SNIPPET_SHORT,
+)
 from second_brain.core.models import ContentType, SourceKind, TrustLabel
 
 logger = logging.getLogger(__name__)
@@ -122,7 +130,7 @@ def search(ctx: click.Context, query: str, limit: int) -> None:
             click.echo("No results found.")
         else:
             for note in results:
-                snippet = note.content[:120].replace("\n", " ")
+                snippet = note.content[:SNIPPET_SHORT].replace("\n", " ")
                 click.echo(f"[{note.note_id}] {snippet}")
                 if note.tags:
                     click.echo(f"  tags: {', '.join(note.tags)}")
@@ -227,7 +235,7 @@ def ask(ctx: click.Context, question: str, top_k: int) -> None:
         if evidence:
             click.echo("=== Evidence Notes ===")
             for i, note in enumerate(evidence, 1):
-                snippet = note.content[:200].replace("\n", " ")
+                snippet = note.content[:SNIPPET_MEDIUM].replace("\n", " ")
                 click.echo(f"  [{i}] ({note.note_id}) {snippet}")
                 if note.tags:
                     click.echo(f"      tags: {', '.join(note.tags)}")
@@ -243,7 +251,7 @@ def ask(ctx: click.Context, question: str, top_k: int) -> None:
         click.echo("\n=== Answer ===")
         click.echo(f"Based on {len(evidence)} evidence note(s):")
         for i, note in enumerate(evidence, 1):
-            first_line = note.content.split("\n")[0][:100]
+            first_line = note.content.split("\n")[0][:SNIPPET_FIRST_LINE]
             click.echo(f"  [{i}] {first_line}")
 
         if related_beliefs:
@@ -277,7 +285,7 @@ def confirm(ctx: click.Context, belief_id: str) -> None:
             click.echo(f"Belief not found: {belief_id}", err=True)
             raise SystemExit(1)
 
-        new_conf = min(1.0, belief.confidence + 0.1)
+        new_conf = min(1.0, belief.confidence + CONFIDENCE_STEP)
         beliefs_svc.update_confidence(bid, new_conf)
         signals.emit("belief_confirmed", {"belief_id": str(bid)})
         click.echo(f"Belief confirmed. Confidence: {belief.confidence:.2f} -> {new_conf:.2f}")
@@ -305,7 +313,7 @@ def refute(ctx: click.Context, belief_id: str) -> None:
             click.echo(f"Belief not found: {belief_id}", err=True)
             raise SystemExit(1)
 
-        new_conf = max(0.0, belief.confidence - 0.1)
+        new_conf = max(0.0, belief.confidence - CONFIDENCE_STEP)
         beliefs_svc.update_confidence(bid, new_conf)
         signals.emit("belief_refuted", {"belief_id": str(bid)})
         click.echo(f"Belief refuted. Confidence: {belief.confidence:.2f} -> {new_conf:.2f}")
@@ -353,12 +361,12 @@ def report(ctx: click.Context) -> None:
     )
     try:
         # Summary counts
-        all_notes = notes_svc.list_notes(limit=100000)
+        all_notes = notes_svc.list_notes(limit=REPORT_QUERY_LIMIT)
         click.echo("=== Knowledge Base Report ===")
         click.echo(f"Total notes: {len(all_notes)}")
 
         for status in BeliefStatus:
-            beliefs = beliefs_svc.list_beliefs(status_filter=status, limit=100000)
+            beliefs = beliefs_svc.list_beliefs(status_filter=status, limit=REPORT_QUERY_LIMIT)
             if beliefs:
                 click.echo(f"Beliefs [{status.value}]: {len(beliefs)}")
 
@@ -383,7 +391,7 @@ def report(ctx: click.Context) -> None:
         # Beliefs approaching decay threshold
         click.echo("\n--- Low Confidence Beliefs ---")
         active = beliefs_svc.list_beliefs(status_filter=BeliefStatus.ACTIVE, limit=1000)
-        low_conf = [b for b in active if b.confidence < 0.3]
+        low_conf = [b for b in active if b.confidence < LOW_CONFIDENCE_THRESHOLD]
         if low_conf:
             for belief in low_conf:
                 click.echo(f"  {belief.claim_text} (confidence: {belief.confidence:.2f})")

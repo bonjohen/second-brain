@@ -39,3 +39,17 @@ class TestSignalService:
         unprocessed = signal_service.get_unprocessed()
         assert len(unprocessed) == 1
         assert unprocessed[0].payload == {"id": "2"}
+
+    def test_get_unprocessed_respects_limit(self, signal_service):
+        for i in range(5):
+            signal_service.emit("batch", {"id": str(i)})
+
+        limited = signal_service.get_unprocessed(limit=3)
+        assert len(limited) == 3
+
+    def test_get_unprocessed_with_type_respects_limit(self, signal_service):
+        for i in range(5):
+            signal_service.emit("typed", {"id": str(i)})
+
+        limited = signal_service.get_unprocessed("typed", limit=2)
+        assert len(limited) == 2

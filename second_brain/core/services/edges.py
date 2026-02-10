@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from typing import Any
+from typing import Any, Literal
 
 from second_brain.core.models import Edge, EntityType, RelType
 from second_brain.storage.sqlite import Database
@@ -49,13 +49,18 @@ class EdgeService:
         self,
         entity_type: EntityType,
         entity_id: uuid.UUID,
-        direction: str | None = None,
+        direction: Literal["outgoing", "incoming"] | None = None,
         rel_type: RelType | None = None,
     ) -> list[Edge]:
         """Get edges for an entity.
 
         direction: "outgoing" (from), "incoming" (to), or None (both).
         """
+        if direction is not None and direction not in ("outgoing", "incoming"):
+            raise ValueError(
+                f"Invalid direction: {direction!r}; expected 'outgoing', 'incoming', or None"
+            )
+
         conditions: list[str] = []
         params: list[Any] = []
 
@@ -81,6 +86,8 @@ class EdgeService:
             params.append(rel_type.value)
 
         where = " AND ".join(conditions)
+        # SAFETY: {where} only contains static SQL fragments built above;
+        # all user-supplied values use parameterized ? placeholders in params.
         rows = self._db.fetchall(
             f"SELECT * FROM edges WHERE {where}",
             tuple(params),

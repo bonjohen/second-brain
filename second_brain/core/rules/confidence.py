@@ -5,13 +5,13 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime, timedelta
 
+from second_brain.core.constants import DEFAULT_BASE_CONFIDENCE
 from second_brain.core.models import DecayModel, EntityType, RelType
 from second_brain.core.rules.decay import exponential_decay, no_decay
 from second_brain.core.services.beliefs import BeliefService
 from second_brain.core.services.edges import EdgeService
 from second_brain.core.utils import parse_utc_datetime
 
-DEFAULT_BASE_CONFIDENCE = 0.5
 DEFAULT_SUPPORT_WEIGHT = 0.1
 DEFAULT_CONTRADICTION_WEIGHT = 0.1
 

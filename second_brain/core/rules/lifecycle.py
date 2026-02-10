@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 
+from second_brain.core.constants import DEFAULT_BATCH_SIZE
 from second_brain.core.models import BeliefStatus
 from second_brain.core.rules.confidence import compute_confidence
 from second_brain.core.rules.contradictions import (
@@ -35,7 +36,7 @@ def auto_transition_beliefs(
 
     # proposed -> active: confidence >= threshold AND no contradictions
     offset = 0
-    batch_size = 500
+    batch_size = DEFAULT_BATCH_SIZE
     while True:
         proposed = belief_service.list_beliefs(
             status_filter=BeliefStatus.PROPOSED, limit=batch_size, offset=offset

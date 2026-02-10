@@ -2,6 +2,8 @@
 
 import uuid
 
+import pytest
+
 from second_brain.core.models import EntityType, RelType
 
 
@@ -154,3 +156,8 @@ class TestEdgeService:
 
         edges = edge_service.get_edges(EntityType.BELIEF, belief_id)
         assert len(edges) == 2
+
+    def test_get_edges_invalid_direction_raises(self, edge_service):
+        """Passing an invalid direction string should raise ValueError."""
+        with pytest.raises(ValueError, match="Invalid direction"):
+            edge_service.get_edges(EntityType.NOTE, uuid.uuid4(), direction="sideways")

@@ -7,7 +7,9 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
+from second_brain.core.constants import DEFAULT_UNPROCESSED_LIMIT
 from second_brain.core.models import Signal
+from second_brain.core.utils import safe_json_loads
 from second_brain.storage.sqlite import Database
 
 
@@ -33,7 +35,11 @@ class SignalService:
         )
         return signal
 
-    def get_unprocessed(self, signal_type: str | None = None) -> list[Signal]:
+    def get_unprocessed(
+        self,
+        signal_type: str | None = None,
+        limit: int = DEFAULT_UNPROCESSED_LIMIT,
+    ) -> list[Signal]:
         """Return unprocessed signals, optionally filtered by type."""
         if signal_type:
             rows = self._db.fetchall(
@@ -42,8 +48,9 @@ class SignalService:
                 FROM signals
                 WHERE processed_at IS NULL AND type = ?
                 ORDER BY created_at ASC
+                LIMIT ?
                 """,
-                (signal_type,),
+                (signal_type, limit),
             )
         else:
             rows = self._db.fetchall(
@@ -52,7 +59,9 @@ class SignalService:
                 FROM signals
                 WHERE processed_at IS NULL
                 ORDER BY created_at ASC
+                LIMIT ?
                 """,
+                (limit,),
             )
         return [self._row_to_signal(row) for row in rows]
 
@@ -68,7 +77,7 @@ class SignalService:
         return Signal(
             signal_id=uuid.UUID(row["signal_id"]),
             type=row["type"],
-            payload=json.loads(row["payload"]),
+            payload=safe_json_loads(row["payload"], default={}, context="signal.payload"),
             created_at=row["created_at"],
             processed_at=row["processed_at"] if row["processed_at"] else None,
         )

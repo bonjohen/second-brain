@@ -86,12 +86,9 @@ class TestCLI:
 
     def test_ask_with_beliefs(self, tmp_path):
         """Ask should show related beliefs when they exist."""
-        runner, opts = self._runner(tmp_path)
-        runner.invoke(cli, [*opts, "add", "Python basics #python"])
-        runner.invoke(cli, [*opts, "add", "Python advanced #python"])
-
-        # Run synthesis to create beliefs
+        from second_brain.agents.ingestion import IngestionAgent
         from second_brain.agents.synthesis import SynthesisAgent
+        from second_brain.core.models import ContentType, SourceKind
         from second_brain.core.services.audit import AuditService
         from second_brain.core.services.beliefs import BeliefService
         from second_brain.core.services.edges import EdgeService
@@ -99,6 +96,7 @@ class TestCLI:
         from second_brain.core.services.signals import SignalService
         from second_brain.storage.sqlite import Database
 
+        # Use a single DB connection for all setup to avoid concurrent access
         db_path = str(tmp_path / "test.db")
         db = Database(db_path)
         audit = AuditService(db)
@@ -106,10 +104,14 @@ class TestCLI:
         notes = NoteService(db, audit)
         edges = EdgeService(db)
         beliefs = BeliefService(db, audit, edges)
+        agent = IngestionAgent(notes, signals)
+        agent.ingest("Python basics #python", ContentType.TEXT, SourceKind.USER)
+        agent.ingest("Python advanced #python", ContentType.TEXT, SourceKind.USER)
         synth = SynthesisAgent(notes, beliefs, edges, signals)
         synth.run()
         db.close()
 
+        runner, opts = self._runner(tmp_path)
         result = runner.invoke(cli, [*opts, "ask", "Python"])
         assert result.exit_code == 0
         assert "Evidence Notes" in result.output

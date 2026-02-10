@@ -2,6 +2,7 @@
 
 import pytest
 
+from second_brain.core.constants import MAX_SIGNAL_RETRIES
 from second_brain.runtime.dispatcher import Dispatcher
 
 
@@ -105,3 +106,21 @@ class TestDispatcher:
         # Second dispatch: ideally only B retries; A should NOT re-run
         dispatcher.dispatch_once()
         assert side_effects == ["A"]  # desired: no duplicate from A
+
+    def test_dispatch_max_retries_marks_processed(self, signal_service):
+        """After MAX_SIGNAL_RETRIES failures, the signal is marked processed."""
+        dispatcher = Dispatcher(signal_service)
+        dispatcher.register("flaky", lambda s: (_ for _ in ()).throw(RuntimeError("boom")))
+
+        signal_service.emit("flaky", {})
+
+        # Exhaust all retries
+        for _ in range(MAX_SIGNAL_RETRIES):
+            dispatcher.dispatch_once()
+
+        # Signal should still be unprocessed (retries not yet exceeded)
+        assert len(signal_service.get_unprocessed("flaky")) == 1
+
+        # Next dispatch exceeds the budget → signal marked processed
+        dispatcher.dispatch_once()
+        assert len(signal_service.get_unprocessed("flaky")) == 0

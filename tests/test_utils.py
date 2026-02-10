@@ -2,7 +2,7 @@
 
 from datetime import UTC, datetime, timezone
 
-from second_brain.core.utils import parse_utc_datetime
+from second_brain.core.utils import parse_utc_datetime, safe_json_loads
 
 
 class TestParseUtcDatetime:
@@ -27,3 +27,20 @@ class TestParseUtcDatetime:
         dt = datetime(2025, 3, 15, 8, 0, 0, tzinfo=UTC)
         result = parse_utc_datetime(dt)
         assert result is dt  # exact same object
+
+
+class TestSafeJsonLoads:
+    def test_valid_json(self):
+        assert safe_json_loads('{"a": 1}') == {"a": 1}
+
+    def test_valid_list(self):
+        assert safe_json_loads('[1, 2, 3]') == [1, 2, 3]
+
+    def test_corrupt_json_returns_default(self):
+        assert safe_json_loads("{bad json", default=[]) == []
+
+    def test_none_returns_default(self):
+        assert safe_json_loads(None, default={}) == {}
+
+    def test_default_is_none(self):
+        assert safe_json_loads(None) is None

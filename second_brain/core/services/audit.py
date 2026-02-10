@@ -7,6 +7,7 @@ import uuid
 from typing import Any
 
 from second_brain.core.models import AuditEntry
+from second_brain.core.utils import safe_json_loads
 from second_brain.storage.sqlite import Database
 
 
@@ -75,7 +76,7 @@ class AuditService:
             entity_type=row["entity_type"],
             entity_id=uuid.UUID(row["entity_id"]),
             action=row["action"],
-            before=json.loads(row["before_json"]) if row["before_json"] else None,
-            after=json.loads(row["after_json"]) if row["after_json"] else None,
+            before=safe_json_loads(row["before_json"], context="audit.before_json"),
+            after=safe_json_loads(row["after_json"], context="audit.after_json"),
             timestamp=row["timestamp"],
         )

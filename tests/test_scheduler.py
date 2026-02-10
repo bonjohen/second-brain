@@ -46,6 +46,9 @@ class TestScheduler:
         assert results[0] == ("step", "result")
 
     def test_run_continuous_max_ticks(self):
+        # Termination is controlled by max_ticks (not wall-clock timing).
+        # The small tick_interval only affects the sleep between ticks;
+        # the test is deterministic because it exits after exactly 3 ticks.
         scheduler = Scheduler(tick_interval=0.01)
         counter = {"n": 0}
 
@@ -58,6 +61,8 @@ class TestScheduler:
         assert counter["n"] == 3
 
     def test_stop(self):
+        # stop() sets a threading.Event, so the scheduler exits immediately
+        # after the step calls stop(). No timing dependency — deterministic.
         scheduler = Scheduler(tick_interval=0.01)
         counter = {"n": 0}
 

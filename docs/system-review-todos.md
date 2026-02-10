@@ -19,7 +19,7 @@ Project: second-brain (225 tests, 19 test files, ~2800 LOC)
 ```
 
 ```
-[🟡 MEDIUM] Structural > Leaky Abstraction — DB path exposed to CLI
+[🟡 MEDIUM] [DEFERRED] Structural > Leaky Abstraction — DB path exposed to CLI
   File: second_brain/cli/main.py:44-50
   Evidence: Every CLI command receives `db_path` and manually constructs Database()
             objects. The fact that storage is SQLite at a file path is visible to
@@ -31,7 +31,7 @@ Project: second-brain (225 tests, 19 test files, ~2800 LOC)
 ```
 
 ```
-[🟡 MEDIUM] Structural > Dispatcher does not isolate handlers
+[🟡 MEDIUM] [DEFERRED] Structural > Dispatcher does not isolate handlers
   File: second_brain/runtime/dispatcher.py:49-53
   Evidence: Multiple handlers for a signal type run sequentially. If handler A
             succeeds and handler B throws, the signal is NOT marked processed.
@@ -58,7 +58,7 @@ Project: second-brain (225 tests, 19 test files, ~2800 LOC)
 ## 2. Configuration & Environment
 
 ```
-[🟡 MEDIUM] Configuration > Hardcoded limits with no documentation
+[🟡 MEDIUM] [ACCEPTED] Configuration > Hardcoded limits with no documentation
   Files: Multiple locations
     - agents/curator.py:70 (limit=1000 for deprecated beliefs)
     - agents/curator.py:95 (limit=1000 for active beliefs)
@@ -78,7 +78,7 @@ Project: second-brain (225 tests, 19 test files, ~2800 LOC)
 ```
 
 ```
-[🟡 MEDIUM] Configuration > Confidence formula weights not configurable
+[🟡 MEDIUM] [FIXED] Configuration > Confidence formula weights not configurable
   Files: core/rules/confidence.py:14-16, core/models.py:142,
          core/services/beliefs.py:39
   Evidence: Three separate `0.5` defaults for base confidence, plus hardcoded
@@ -167,7 +167,7 @@ Project: second-brain (225 tests, 19 test files, ~2800 LOC)
 ```
 
 ```
-[🟡 MEDIUM] Error Handling > JSON decode errors not handled in row conversion
+[🟡 MEDIUM] [FIXED] Error Handling > JSON decode errors not handled in row conversion
   Files:
     - core/services/notes.py:206-207 — json.loads(row["tags"]), json.loads(row["entities"])
     - core/services/beliefs.py:177 — json.loads(row["scope"])
@@ -181,7 +181,7 @@ Project: second-brain (225 tests, 19 test files, ~2800 LOC)
 ```
 
 ```
-[🟡 MEDIUM] Error Handling > Dispatcher retry loop has no backoff
+[🟡 MEDIUM] [FIXED] Error Handling > Dispatcher retry loop has no backoff
   File: second_brain/runtime/dispatcher.py:49-58
   Evidence: Failed signals are not marked processed and will be retried immediately
             on next dispatch_once() call. No delay, backoff, or max retry count.
@@ -191,7 +191,7 @@ Project: second-brain (225 tests, 19 test files, ~2800 LOC)
 ```
 
 ```
-[🟡 MEDIUM] Error Handling > Scheduler catches all exceptions uniformly
+[🟡 MEDIUM] [ACCEPTED] Error Handling > Scheduler catches all exceptions uniformly
   File: second_brain/runtime/scheduler.py:44-48
   Evidence: `except Exception` handles all errors the same way — increment counter
             and log. No distinction between transient failures and programming bugs.
@@ -201,7 +201,7 @@ Project: second-brain (225 tests, 19 test files, ~2800 LOC)
 ```
 
 ```
-[🟡 MEDIUM] Error Handling > Silent skip of unhandled signal types
+[🟡 MEDIUM] [FIXED] Error Handling > Silent skip of unhandled signal types
   File: second_brain/runtime/dispatcher.py:42-47
   Evidence: If no handler is registered for a signal type, the signal is marked
             processed and silently discarded.
@@ -225,7 +225,7 @@ Project: second-brain (225 tests, 19 test files, ~2800 LOC)
 ## 4. Data & State
 
 ```
-[🟡 MEDIUM] Data & State > Unbounded query in get_unprocessed()
+[🟡 MEDIUM] [FIXED] Data & State > Unbounded query in get_unprocessed()
   File: second_brain/core/services/signals.py:36-56
   Evidence: Both query paths lack LIMIT. If unprocessed signals accumulate (e.g.
             100K+ rows after extended downtime), all are fetched into memory.
@@ -234,7 +234,7 @@ Project: second-brain (225 tests, 19 test files, ~2800 LOC)
 ```
 
 ```
-[🟡 MEDIUM] Data & State > N+1 query pattern in lifecycle transitions
+[🟡 MEDIUM] [DEFERRED] Data & State > N+1 query pattern in lifecycle transitions
   File: second_brain/core/rules/lifecycle.py:36-56
   Evidence: For each belief in a batch, compute_confidence() calls
             edge_service.get_edges() individually. Pre-loaded contradiction
@@ -245,7 +245,7 @@ Project: second-brain (225 tests, 19 test files, ~2800 LOC)
 ```
 
 ```
-[🟡 MEDIUM] Data & State > TEXT timestamps instead of native SQLite types
+[🟡 MEDIUM] [ACCEPTED] Data & State > TEXT timestamps instead of native SQLite types
   File: second_brain/storage/migrations/001_initial_schema.sql:7,14,31,45
   Evidence: All timestamps stored as TEXT (ISO 8601 strings). SQLite cannot use
             time-based indexes efficiently; date arithmetic requires string parsing.
@@ -266,7 +266,7 @@ Project: second-brain (225 tests, 19 test files, ~2800 LOC)
 ```
 
 ```
-[🟡 MEDIUM] Data & State > Edge table has no referential integrity
+[🟡 MEDIUM] [ACCEPTED] Data & State > Edge table has no referential integrity
   File: second_brain/core/services/edges.py:16-46
   Evidence: Edges table has no FK constraints (by design, for polymorphism).
             create_edge() performs no validation that from_id or to_id exist.
@@ -351,7 +351,7 @@ Project: second-brain (225 tests, 19 test files, ~2800 LOC)
 ```
 
 ```
-[🟡 MEDIUM] Testing > Missing performance/load tests
+[🟡 MEDIUM] [DEFERRED] Testing > Missing performance/load tests
   File: (no performance test files)
   Evidence: No tests for FTS5 with >10000 notes, belief list with >1000 beliefs,
             edge traversal with >100 edges, or embedding store with >10000 vectors.
@@ -361,7 +361,7 @@ Project: second-brain (225 tests, 19 test files, ~2800 LOC)
 ```
 
 ```
-[🟡 MEDIUM] Testing > CLI test creates concurrent DB connections
+[🟡 MEDIUM] [FIXED] Testing > CLI test creates concurrent DB connections
   File: tests/test_cli.py:87-116
   Evidence: test_ask_with_beliefs creates a second Database connection to the same
             file while the CLI runner holds another. Both open simultaneously.
@@ -370,7 +370,7 @@ Project: second-brain (225 tests, 19 test files, ~2800 LOC)
 ```
 
 ```
-[🟡 MEDIUM] Testing > Race condition in scheduler timing test
+[🟡 MEDIUM] [FIXED] Testing > Race condition in scheduler timing test
   File: tests/test_scheduler.py:48-72
   Evidence: test_run_continuous_max_ticks uses 10ms tick interval. On slow CI,
             timing may vary.
@@ -384,7 +384,7 @@ Project: second-brain (225 tests, 19 test files, ~2800 LOC)
 ## 6. Dependency & Build
 
 ```
-[🟡 MEDIUM] Dependency > Broad version ranges for major dependencies
+[🟡 MEDIUM] [ACCEPTED] Dependency > Broad version ranges for major dependencies
   File: pyproject.toml:9-10
   Evidence: `sentence-transformers>=2.7,<4` spans a major version boundary.
             `numpy>=1.26,<3` similarly broad.
@@ -408,7 +408,7 @@ Project: second-brain (225 tests, 19 test files, ~2800 LOC)
 ## 7. Security
 
 ```
-[🟡 MEDIUM] Security > Dynamic SQL construction via f-string interpolation
+[🟡 MEDIUM] [FIXED] Security > Dynamic SQL construction via f-string interpolation
   Files:
     - core/services/notes.py:189
     - core/services/edges.py:85
@@ -424,7 +424,7 @@ Project: second-brain (225 tests, 19 test files, ~2800 LOC)
 ```
 
 ```
-[🟡 MEDIUM] Security > Unvalidated JSON deserialization from database
+[🟡 MEDIUM] [FIXED] Security > Unvalidated JSON deserialization from database
   Files: (same as Error Handling finding — cross-referenced)
     - core/services/notes.py:206-207
     - core/services/beliefs.py:177
@@ -452,7 +452,7 @@ Project: second-brain (225 tests, 19 test files, ~2800 LOC)
 ## 8. Code Hygiene
 
 ```
-[🟡 MEDIUM] Code Hygiene > Magic numbers in CLI commands
+[🟡 MEDIUM] [FIXED] Code Hygiene > Magic numbers in CLI commands
   File: second_brain/cli/main.py — throughout
   Evidence: Hardcoded values with no named constants:
     - [:120] snippet truncation (line 122)
@@ -466,7 +466,7 @@ Project: second-brain (225 tests, 19 test files, ~2800 LOC)
 ```
 
 ```
-[🟡 MEDIUM] Code Hygiene > Stop words set recreated on every loop iteration
+[🟡 MEDIUM] [FIXED] Code Hygiene > Stop words set recreated on every loop iteration
   File: second_brain/core/rules/contradictions.py:105-126
   Evidence: The stop_words set is defined inside the `for other in candidates`
             loop body, recreating it on every iteration.
@@ -475,7 +475,7 @@ Project: second-brain (225 tests, 19 test files, ~2800 LOC)
 ```
 
 ```
-[🟡 MEDIUM] Code Hygiene > Duplicated batch_size constants
+[🟡 MEDIUM] [FIXED] Code Hygiene > Duplicated batch_size constants
   Files: core/rules/contradictions.py:50, core/rules/lifecycle.py:38
   Evidence: Both use `batch_size = 500` independently. Not shared.
   Impact: Divergence risk if one is changed without the other.
@@ -526,7 +526,7 @@ Project: second-brain (225 tests, 19 test files, ~2800 LOC)
 ```
 
 ```
-[🟡 MEDIUM] Concurrency > Race condition on scheduler _running flag
+[🟡 MEDIUM] [FIXED] Concurrency > Race condition on scheduler _running flag
   File: second_brain/runtime/scheduler.py:26, 62, 64, 73
   Evidence: _running is a plain bool set from run_continuous() and checked in a
             while loop. stop() sets it from potentially another thread. No
@@ -537,7 +537,7 @@ Project: second-brain (225 tests, 19 test files, ~2800 LOC)
 ```
 
 ```
-[🟡 MEDIUM] Concurrency > No timeout on agent steps
+[🟡 MEDIUM] [DEFERRED] Concurrency > No timeout on agent steps
   File: second_brain/runtime/scheduler.py:41
   Evidence: Agent steps called with no timeout. A hung agent blocks the entire
             scheduler indefinitely.
@@ -570,7 +570,7 @@ Project: second-brain (225 tests, 19 test files, ~2800 LOC)
 ## 10. API & Contract Design
 
 ```
-[🟡 MEDIUM] API Design > Inconsistent error semantics across services
+[🟡 MEDIUM] [DEFERRED] API Design > Inconsistent error semantics across services
   Files:
     - core/services/notes.py:60-82 — update_source_trust() raises ValueError
     - core/services/notes.py:50-57 — get_source() returns None
@@ -584,7 +584,7 @@ Project: second-brain (225 tests, 19 test files, ~2800 LOC)
 ```
 
 ```
-[🟡 MEDIUM] API Design > No validation of direction parameter
+[🟡 MEDIUM] [FIXED] API Design > No validation of direction parameter
   File: second_brain/core/services/edges.py:48-88
   Evidence: direction accepts any string but only "outgoing", "incoming", and None
             are documented. Any typo (e.g. "outgoings") silently falls through to

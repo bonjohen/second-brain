@@ -17,6 +17,7 @@ from second_brain.core.models import (
     TrustLabel,
 )
 from second_brain.core.services.audit import AuditService
+from second_brain.core.utils import safe_json_loads
 from second_brain.storage.sqlite import Database
 
 logger = logging.getLogger(__name__)
@@ -189,6 +190,8 @@ class NoteService:
             where = "WHERE " + " AND ".join(conditions)
 
         params.extend([limit, offset])
+        # SAFETY: {where} only contains static SQL fragments built above;
+        # all user-supplied values use parameterized ? placeholders in params.
         rows = self._db.fetchall(
             f"SELECT * FROM notes {where} ORDER BY created_at DESC LIMIT ? OFFSET ?",
             tuple(params),
@@ -207,8 +210,8 @@ class NoteService:
             content=row["content"],
             content_type=ContentType(row["content_type"]),
             source_id=uuid.UUID(row["source_id"]),
-            tags=json.loads(row["tags"]),
-            entities=json.loads(row["entities"]),
+            tags=safe_json_loads(row["tags"], default=[], context="note.tags"),
+            entities=safe_json_loads(row["entities"], default=[], context="note.entities"),
             content_hash=row["content_hash"],
         )
 

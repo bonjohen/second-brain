@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import uuid
 
+from second_brain.core.constants import DEFAULT_BATCH_SIZE, STOP_WORDS
 from second_brain.core.models import Belief, BeliefStatus
 from second_brain.core.services.beliefs import BeliefService
 from second_brain.core.services.edges import EdgeService
@@ -47,7 +48,7 @@ def load_candidate_beliefs(
     candidates: list[Belief] = []
     for status in (BeliefStatus.PROPOSED, BeliefStatus.ACTIVE):
         offset = 0
-        batch_size = 500
+        batch_size = DEFAULT_BATCH_SIZE
         while True:
             batch = belief_service.list_beliefs(
                 status_filter=status, limit=batch_size, offset=offset
@@ -118,9 +119,7 @@ def detect_contradictions(
         # Heuristic 2: same-subject opposing predicates
         # Claims must share at least 2 meaningful words (subject overlap)
         shared = claim_words & other_words
-        # Filter out very common words
-        stop_words = {"is", "a", "the", "an", "and", "or", "of", "in", "to", "for", "it", "are"}
-        meaningful_shared = shared - stop_words
+        meaningful_shared = shared - STOP_WORDS
         if len(meaningful_shared) >= 2 and _has_opposing_words(claim_words, other_words):
             contradictions.append(other.belief_id)
 

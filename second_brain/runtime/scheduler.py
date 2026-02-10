@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-import time
+import threading
 from collections.abc import Callable
 from typing import Any
 
@@ -23,7 +23,7 @@ class Scheduler:
     def __init__(self, tick_interval: float = 60.0) -> None:
         self._tick_interval = tick_interval
         self._steps: list[tuple[str, AgentStep]] = []
-        self._running = False
+        self._stop_event = threading.Event()
         self.failure_counts: dict[str, int] = {}
 
     def register(self, name: str, step: AgentStep) -> None:
@@ -59,15 +59,15 @@ class Scheduler:
         Args:
             max_ticks: If set, stop after this many ticks. None = run until stopped.
         """
-        self._running = True
+        self._stop_event.clear()
         ticks_done = 0
-        while self._running:
+        while not self._stop_event.is_set():
             self.tick()
             ticks_done += 1
             if max_ticks is not None and ticks_done >= max_ticks:
                 break
-            time.sleep(self._tick_interval)
+            self._stop_event.wait(self._tick_interval)
 
     def stop(self) -> None:
         """Signal the continuous loop to stop."""
-        self._running = False
+        self._stop_event.set()

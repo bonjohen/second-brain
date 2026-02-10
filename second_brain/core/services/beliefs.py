@@ -7,9 +7,11 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
+from second_brain.core.constants import DEFAULT_BASE_CONFIDENCE
 from second_brain.core.models import Belief, BeliefStatus, DecayModel
 from second_brain.core.services.audit import AuditService
 from second_brain.core.services.edges import EdgeService
+from second_brain.core.utils import safe_json_loads
 from second_brain.storage.sqlite import Database
 
 # Valid status transitions
@@ -36,7 +38,7 @@ class BeliefService:
     def create_belief(
         self,
         claim_text: str,
-        confidence: float = 0.5,
+        confidence: float = DEFAULT_BASE_CONFIDENCE,
         derived_from_agent: str = "",
         decay_model: DecayModel = DecayModel.EXPONENTIAL,
         scope: dict[str, Any] | None = None,
@@ -174,6 +176,6 @@ class BeliefService:
             created_at=row["created_at"],
             updated_at=row["updated_at"],
             decay_model=DecayModel(row["decay_model"]),
-            scope=json.loads(row["scope"]),
+            scope=safe_json_loads(row["scope"], default={}, context="belief.scope"),
             derived_from_agent=row["derived_from_agent"],
         )
