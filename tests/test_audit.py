@@ -37,3 +37,16 @@ class TestAuditService:
         assert len(history) == 1
         assert history[0].before == before
         assert history[0].after == after
+
+    def test_get_history_pagination(self, audit_service):
+        entity_id = uuid.uuid4()
+        for i in range(5):
+            audit_service.log_event("note", entity_id, f"action_{i}")
+
+        page1 = audit_service.get_history("note", entity_id, limit=2, offset=0)
+        page2 = audit_service.get_history("note", entity_id, limit=2, offset=2)
+
+        assert len(page1) == 2
+        assert len(page2) == 2
+        assert [e.action for e in page1] == ["action_0", "action_1"]
+        assert [e.action for e in page2] == ["action_2", "action_3"]

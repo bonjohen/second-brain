@@ -52,16 +52,19 @@ class AuditService:
         self,
         entity_type: str,
         entity_id: uuid.UUID,
+        limit: int = 1000,
+        offset: int = 0,
     ) -> list[AuditEntry]:
-        """Return all audit entries for a given entity, ordered by timestamp ascending."""
+        """Return audit entries for a given entity, ordered by timestamp ascending."""
         rows = self._db.fetchall(
             """
             SELECT audit_id, entity_type, entity_id, action, before_json, after_json, timestamp
             FROM audit_log
             WHERE entity_type = ? AND entity_id = ?
             ORDER BY timestamp ASC
+            LIMIT ? OFFSET ?
             """,
-            (entity_type, str(entity_id)),
+            (entity_type, str(entity_id), limit, offset),
         )
         return [self._row_to_entry(row) for row in rows]
 

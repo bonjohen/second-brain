@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sqlite3
 import uuid
 from typing import Any
 
@@ -136,16 +137,19 @@ class NoteService:
 
     def search_notes(self, query: str) -> list[Note]:
         """Full-text search using FTS5."""
-        rows = self._db.fetchall(
-            """
-            SELECT n.*
-            FROM notes n
-            JOIN notes_fts ON notes_fts.note_id = n.note_id
-            WHERE notes_fts MATCH ?
-            ORDER BY rank
-            """,
-            (query,),
-        )
+        try:
+            rows = self._db.fetchall(
+                """
+                SELECT n.*
+                FROM notes n
+                JOIN notes_fts ON notes_fts.note_id = n.note_id
+                WHERE notes_fts MATCH ?
+                ORDER BY rank
+                """,
+                (query,),
+            )
+        except sqlite3.OperationalError:
+            return []
         return [self._row_to_note(row) for row in rows]
 
     def list_notes(

@@ -12,6 +12,7 @@ from second_brain.core.services.beliefs import BeliefService
 from second_brain.core.services.edges import EdgeService
 from second_brain.core.services.notes import NoteService
 from second_brain.core.services.signals import SignalService
+from second_brain.core.utils import parse_utc_datetime
 
 logger = logging.getLogger(__name__)
 
@@ -69,11 +70,7 @@ class CuratorAgent:
             status_filter=BeliefStatus.DEPRECATED, limit=1000
         )
         for belief in deprecated:
-            updated_at = belief.updated_at
-            if isinstance(updated_at, str):
-                updated_at = datetime.fromisoformat(updated_at)
-            if updated_at.tzinfo is None:
-                updated_at = updated_at.replace(tzinfo=UTC)
+            updated_at = parse_utc_datetime(belief.updated_at)
 
             if updated_at < cutoff:
                 try:
@@ -89,7 +86,7 @@ class CuratorAgent:
 
         return count
 
-    def deduplicate_beliefs(self) -> int:
+    def deduplicate_beliefs(self, max_beliefs: int = 200) -> int:
         """Find and merge near-duplicate beliefs. Returns count of merges."""
         if self._vector_store is None:
             return 0
@@ -101,6 +98,12 @@ class CuratorAgent:
             status_filter=BeliefStatus.PROPOSED, limit=1000
         )
         all_beliefs = active_beliefs + proposed_beliefs
+
+        if len(all_beliefs) > max_beliefs:
+            logger.warning(
+                "Truncating dedup from %d to %d beliefs", len(all_beliefs), max_beliefs
+            )
+            all_beliefs = all_beliefs[:max_beliefs]
 
         if len(all_beliefs) < 2:
             return 0
@@ -186,8 +189,18 @@ class CuratorAgent:
 
     def distill_notes(self) -> int:
         """Create summary notes from clusters of related notes. Returns count of summaries."""
+        # Paginate to collect all notes
+        all_notes: list = []
+        offset = 0
+        batch_size = 1000
+        while True:
+            batch = self._notes.list_notes(limit=batch_size, offset=offset)
+            if not batch:
+                break
+            all_notes.extend(batch)
+            offset += batch_size
+
         # Group notes by tags -- find tags with 5+ notes
-        all_notes = self._notes.list_notes(limit=10000)
         tag_groups: dict[str, list] = {}
         for note in all_notes:
             for tag in note.tags:

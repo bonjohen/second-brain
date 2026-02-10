@@ -9,6 +9,7 @@ from second_brain.core.models import DecayModel, EntityType, RelType
 from second_brain.core.rules.decay import exponential_decay, no_decay
 from second_brain.core.services.beliefs import BeliefService
 from second_brain.core.services.edges import EdgeService
+from second_brain.core.utils import parse_utc_datetime
 
 
 def compute_confidence(
@@ -37,11 +38,7 @@ def compute_confidence(
     contradicts = sum(1 for e in edges if e.rel_type == RelType.CONTRADICTS)
 
     # Parse updated_at if it's a string
-    updated_at = belief.updated_at
-    if isinstance(updated_at, str):
-        updated_at = datetime.fromisoformat(updated_at)
-    if updated_at.tzinfo is None:
-        updated_at = updated_at.replace(tzinfo=UTC)
+    updated_at = parse_utc_datetime(belief.updated_at)
 
     elapsed = now - updated_at
     if elapsed < timedelta(0):

@@ -192,3 +192,73 @@ class TestCuratorAgent:
         assert merged == 1
 
         belief_service.update_belief_status = original
+
+    def test_deduplicate_caps_at_max_beliefs(
+        self, note_service, belief_service, edge_service, signal_service, audit_service
+    ):
+        """Dedup should only consider the first max_beliefs beliefs."""
+        mock_vs = MagicMock()
+        # Each belief gets a unique embedding so no duplicates are found
+        counter = {"n": 0}
+
+        def unique_embedding(text):
+            v = np.zeros(384, dtype=np.float32)
+            v[counter["n"]] = 1.0
+            counter["n"] += 1
+            return v
+
+        mock_vs.compute_embedding.side_effect = unique_embedding
+        mock_vs.cosine_similarity.return_value = 0.0  # no duplicates
+
+        agent = CuratorAgent(
+            note_service, belief_service, edge_service,
+            signal_service, audit_service, mock_vs,
+            similarity_threshold=0.95,
+        )
+
+        # Create 5 ACTIVE beliefs
+        for i in range(5):
+            b = belief_service.create_belief(claim_text=f"Belief {i}")
+            belief_service.update_belief_status(b.belief_id, BeliefStatus.ACTIVE)
+
+        # With max_beliefs=3, only first 3 get embeddings computed
+        agent.deduplicate_beliefs(max_beliefs=3)
+        assert mock_vs.compute_embedding.call_count == 3
+
+    def test_distill_paginates_notes(
+        self, note_service, belief_service, edge_service, signal_service, audit_service
+    ):
+        """distill_notes should paginate through all notes, not stop at one batch."""
+        agent = self._make_agent(
+            note_service, belief_service, edge_service, signal_service, audit_service
+        )
+
+        source = note_service.create_source(kind="user", locator="test")
+        for i in range(6):
+            note_service.create_note(
+                f"Paginated note {i} about testing",
+                content_type="text",
+                source_id=source.source_id,
+                tags=["paginate-test"],
+            )
+
+        # Track calls to list_notes to verify pagination pattern
+        original_list = note_service.list_notes
+        calls: list[dict] = []
+
+        def tracking_list(*args, **kwargs):
+            calls.append(kwargs.copy())
+            return original_list(*args, **kwargs)
+
+        note_service.list_notes = tracking_list
+
+        distilled = agent.distill_notes()
+        assert distilled == 1
+
+        # The pagination loop should have made at least 2 calls:
+        # one that returns notes, and a final one that returns empty
+        pagination_calls = [c for c in calls if "offset" in c and c.get("tag") is None]
+        assert len(pagination_calls) >= 2
+        assert pagination_calls[0]["offset"] == 0
+
+        note_service.list_notes = original_list

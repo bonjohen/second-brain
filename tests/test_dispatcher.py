@@ -76,3 +76,27 @@ class TestDispatcher:
         dispatcher.dispatch_once()
 
         assert len(count_list) == 1
+
+    def test_dispatch_partial_handler_failure(self, signal_service):
+        """When handler B throws after handler A succeeds, the signal stays
+        unprocessed.  Next poll re-runs handler A, causing duplicate side effects.
+
+        This test documents the known limitation so future refactors can address it.
+        """
+        dispatcher = Dispatcher(signal_service)
+        side_effects: list[str] = []
+
+        dispatcher.register("partial", lambda s: side_effects.append("A"))
+        dispatcher.register("partial", lambda s: (_ for _ in ()).throw(RuntimeError("B failed")))
+
+        signal_service.emit("partial", {})
+
+        # First dispatch: A runs, then B raises -- signal NOT marked processed
+        count = dispatcher.dispatch_once()
+        assert count == 0
+        assert side_effects == ["A"]
+
+        # Second dispatch: signal still unprocessed, so A runs *again*
+        count = dispatcher.dispatch_once()
+        assert count == 0
+        assert side_effects == ["A", "A"]  # duplicate side effect from A

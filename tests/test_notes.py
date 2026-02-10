@@ -130,6 +130,20 @@ class TestNoteService:
         history = audit_service.get_history("source", source.source_id)
         assert any(e.action == "trust_updated" for e in history)
 
+    def test_search_notes_malformed_fts_query(self, note_service):
+        """Unbalanced quotes should return empty list, not crash."""
+        source = self._create_source(note_service)
+        note_service.create_note("some content", ContentType.TEXT, source.source_id)
+        results = note_service.search_notes('"')
+        assert results == []
+
+    def test_search_notes_special_operators(self, note_service):
+        """Invalid FTS5 operator combinations should return empty list."""
+        source = self._create_source(note_service)
+        note_service.create_note("some content", ContentType.TEXT, source.source_id)
+        results = note_service.search_notes("OR AND NOT")
+        assert results == []
+
     def test_update_source_trust_not_found(self, note_service):
         with pytest.raises(ValueError, match="Source not found"):
             note_service.update_source_trust(uuid.uuid4(), TrustLabel.TRUSTED)

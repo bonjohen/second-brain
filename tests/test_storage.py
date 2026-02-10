@@ -163,3 +163,77 @@ class TestDatabase:
         db.close()
         assert error is not None
         assert "different thread" in str(error)
+
+    def test_migration_failure_is_surfaced(self, tmp_path):
+        """A broken migration should raise RuntimeError with the filename."""
+        import shutil
+        from pathlib import Path
+
+        # Copy real migrations, then add a broken one
+        real_migrations = (
+            Path(__file__).resolve().parent.parent / "second_brain" / "storage" / "migrations"
+        )
+        custom_migrations = tmp_path / "custom_migrations"
+        shutil.copytree(real_migrations, custom_migrations)
+
+        broken = custom_migrations / "999_broken.sql"
+        broken.write_text(
+            "CREATE TABLE IF NOT EXISTS _test_broken (id INTEGER);\n"
+            "THIS IS NOT VALID SQL;\n",
+            encoding="utf-8",
+        )
+
+        # Bootstrap a healthy DB with all real migrations applied
+        db_path = tmp_path / "fail_test.db"
+        db = Database(db_path)
+
+        # Helper that mirrors run_migrations() but uses custom_migrations dir
+        def run_custom_migrations():
+            applied = {
+                row[0]
+                for row in db._conn.execute("SELECT filename FROM _migrations").fetchall()
+            }
+            for mf in sorted(custom_migrations.glob("*.sql")):
+                if mf.name not in applied:
+                    sql = mf.read_text(encoding="utf-8")
+                    try:
+                        db._conn.executescript(sql)
+                    except Exception:
+                        raise RuntimeError(
+                            f"Migration {mf.name} failed. Partial DDL may have been applied. "
+                            "Use IF NOT EXISTS guards in migrations for safe re-runs."
+                        ) from None
+                    db._conn.execute(
+                        "INSERT INTO _migrations (filename, applied_at) VALUES (?, ?)",
+                        (mf.name, "2025-01-01T00:00:00"),
+                    )
+                    db._conn.commit()
+
+        # Broken migration raises RuntimeError
+        with pytest.raises(RuntimeError, match="999_broken.sql"):
+            run_custom_migrations()
+
+        # Partial DDL (CREATE TABLE) was applied by executescript
+        row = db.fetchone(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='_test_broken'"
+        )
+        assert row is not None
+
+        # But the migration was NOT recorded
+        recorded = db.fetchone(
+            "SELECT filename FROM _migrations WHERE filename = '999_broken.sql'"
+        )
+        assert recorded is None
+
+        # Recovery: fix the migration and re-run
+        broken.write_text(
+            "CREATE TABLE IF NOT EXISTS _test_broken (id INTEGER);\n",
+            encoding="utf-8",
+        )
+        run_custom_migrations()
+        recorded = db.fetchone(
+            "SELECT filename FROM _migrations WHERE filename = '999_broken.sql'"
+        )
+        assert recorded is not None
+
+        db.close()

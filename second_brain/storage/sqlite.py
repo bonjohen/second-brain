@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import sqlite3
 import threading
 from collections.abc import Generator
@@ -9,6 +10,8 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_DB_PATH = Path.home() / ".second_brain" / "brain.db"
 
@@ -115,7 +118,17 @@ class Database:
         for mf in sorted(migrations_dir.glob("*.sql")):
             if mf.name not in applied:
                 sql = mf.read_text(encoding="utf-8")
-                self._conn.executescript(sql)
+                try:
+                    # Note: executescript() auto-commits per statement, so partial
+                    # DDL may be applied on failure. Use CREATE TABLE/INDEX IF NOT
+                    # EXISTS in migration files to make them re-runnable.
+                    self._conn.executescript(sql)
+                except Exception:
+                    logger.exception("Migration %s failed", mf.name)
+                    raise RuntimeError(
+                        f"Migration {mf.name} failed. Partial DDL may have been applied. "
+                        "Use IF NOT EXISTS guards in migrations for safe re-runs."
+                    ) from None
                 self._conn.execute(
                     "INSERT INTO _migrations (filename, applied_at) VALUES (?, ?)",
                     (mf.name, datetime.now(UTC).isoformat()),
