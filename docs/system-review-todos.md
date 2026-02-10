@@ -131,7 +131,7 @@ Project: second-brain (225 tests, 19 test files, ~2800 LOC)
 ```
 
 ```
-[🟠 HIGH] Error Handling > Swallowed exception in search_notes()
+[🟠 HIGH] [FIXED] Error Handling > Swallowed exception in search_notes()
   File: second_brain/core/services/notes.py:151-152
   Evidence: `except sqlite3.OperationalError: return []` — no logging or indication
             of failure. Callers cannot distinguish "no results" from "search crashed".
@@ -255,7 +255,7 @@ Project: second-brain (225 tests, 19 test files, ~2800 LOC)
 ```
 
 ```
-[🟡 MEDIUM] Data & State > Datetime parsing fragile and duplicated
+[🟡 MEDIUM] [FIXED] Data & State > Datetime parsing fragile and duplicated
   Files: core/rules/confidence.py:40-44, agents/curator.py:70-73
   Evidence: `isinstance(updated_at, str) → fromisoformat() → patch UTC` pattern
             was duplicated. Now extracted to parse_utc_datetime() but _row_to_*
@@ -315,7 +315,7 @@ Project: second-brain (225 tests, 19 test files, ~2800 LOC)
 ```
 
 ```
-[🟠 HIGH] Testing > Missing negative/edge-case tests on critical paths
+[🟠 HIGH] [FIXED] Testing > Missing negative/edge-case tests on critical paths
   Files:
     - tests/test_notes.py — no tests for duplicate content hash, concurrent creation
     - tests/test_beliefs.py — only 1 of 5 invalid status transitions tested
@@ -340,7 +340,7 @@ Project: second-brain (225 tests, 19 test files, ~2800 LOC)
 ```
 
 ```
-[🟠 HIGH] Testing > Missing signal pipeline integration tests
+[🟠 HIGH] [FIXED] Testing > Missing signal pipeline integration tests
   File: (no dedicated integration test file)
   Evidence: Individual agents, signals, and dispatcher are tested in isolation.
             No test covers the full signal → dispatcher → agent → handler flow.
@@ -515,7 +515,7 @@ Project: second-brain (225 tests, 19 test files, ~2800 LOC)
 ## 9. Concurrency & Performance
 
 ```
-[🟠 HIGH] Concurrency > O(n^2) dedup with no timeout
+[🟠 HIGH] [FIXED] Concurrency > O(n^2) dedup with no timeout
   File: second_brain/agents/curator.py:120-124
   Evidence: Nested loop compares each belief embedding pair. Capped at max_beliefs
             =200 (20k comparisons), but no timeout or iteration limit exists.
@@ -547,7 +547,7 @@ Project: second-brain (225 tests, 19 test files, ~2800 LOC)
 ```
 
 ```
-[🟡 MEDIUM] Concurrency > Unbounded pagination in distill_notes()
+[🟡 MEDIUM] [FIXED] Concurrency > Unbounded pagination in distill_notes()
   File: second_brain/agents/curator.py:192-201
   Evidence: distill_notes() paginates all notes into memory (batch_size=1000 but
             no total limit). For 100K+ notes, all are loaded.
@@ -607,7 +607,7 @@ Project: second-brain (225 tests, 19 test files, ~2800 LOC)
 ## 11. Process & Lifecycle
 
 ```
-[🟡 MEDIUM] Process > Migration idempotency not enforced
+[🟡 MEDIUM] [FIXED] Process > Migration idempotency not enforced
   File: second_brain/storage/sqlite.py:122-131
   Evidence: Comment documents requirement for IF NOT EXISTS guards in migrations,
             but this is not enforced programmatically. A migration without guards

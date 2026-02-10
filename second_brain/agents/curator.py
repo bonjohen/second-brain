@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -86,8 +87,15 @@ class CuratorAgent:
 
         return count
 
-    def deduplicate_beliefs(self, max_beliefs: int = 200) -> int:
-        """Find and merge near-duplicate beliefs. Returns count of merges."""
+    def deduplicate_beliefs(
+        self, max_beliefs: int = 200, time_budget: float = 30.0
+    ) -> int:
+        """Find and merge near-duplicate beliefs. Returns count of merges.
+
+        Args:
+            max_beliefs: Maximum number of beliefs to consider (caps O(n^2)).
+            time_budget: Maximum seconds to spend on pairwise comparisons.
+        """
         if self._vector_store is None:
             return 0
 
@@ -116,12 +124,20 @@ class CuratorAgent:
 
         merged_ids: set[str] = set()
         merge_count = 0
+        deadline = time.monotonic() + time_budget
 
         for i in range(len(embeddings)):
             bid_i = embeddings[i][0]
             if str(bid_i) in merged_ids:
                 continue
             for j in range(i + 1, len(embeddings)):
+                if time.monotonic() > deadline:
+                    logger.warning(
+                        "Dedup time budget (%.0fs) exceeded after %d merges",
+                        time_budget,
+                        merge_count,
+                    )
+                    return merge_count
                 bid_j = embeddings[j][0]
                 if str(bid_j) in merged_ids:
                     continue

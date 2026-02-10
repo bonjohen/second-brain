@@ -144,6 +144,33 @@ class TestNoteService:
         results = note_service.search_notes("OR AND NOT")
         assert results == []
 
+    def test_duplicate_content_hash_allowed(self, note_service):
+        """Two notes with identical content should have the same hash but be separate entries."""
+        source = self._create_source(note_service)
+        note1 = note_service.create_note("duplicate content", ContentType.TEXT, source.source_id)
+        note2 = note_service.create_note("duplicate content", ContentType.TEXT, source.source_id)
+        assert note1.content_hash == note2.content_hash
+        assert note1.note_id != note2.note_id
+
+    def test_create_note_empty_tags_and_entities(self, note_service):
+        """Notes with no tags or entities should work fine."""
+        source = self._create_source(note_service)
+        note = note_service.create_note(
+            "plain note", ContentType.TEXT, source.source_id, tags=[], entities=[]
+        )
+        assert note.tags == []
+        assert note.entities == []
+
+    def test_list_notes_empty_result(self, note_service):
+        """Listing notes when none exist should return empty list."""
+        results = note_service.list_notes()
+        assert results == []
+
+    def test_search_notes_empty_fts_table(self, note_service):
+        """Searching when no notes exist should return empty list."""
+        results = note_service.search_notes("anything")
+        assert results == []
+
     def test_update_source_trust_not_found(self, note_service):
         with pytest.raises(ValueError, match="Source not found"):
             note_service.update_source_trust(uuid.uuid4(), TrustLabel.TRUSTED)

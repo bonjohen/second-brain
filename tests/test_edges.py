@@ -117,3 +117,40 @@ class TestEdgeService:
         edges = edge_service.get_edges(EntityType.NOTE, note_id, direction="outgoing")
         assert len(edges) == 1
         assert edges[0].to_id == nonexistent_belief
+
+    def test_both_directions_does_not_duplicate_single_edge(self, edge_service):
+        """direction=None (both) should not return the same edge twice.
+
+        An outgoing-only edge matching the 'from' clause should not also
+        appear via the 'to' clause (different entity types prevent this).
+        """
+        belief_id = uuid.uuid4()
+        note_id = uuid.uuid4()
+        edge_service.create_edge(
+            EntityType.BELIEF, belief_id, RelType.SUPPORTS,
+            EntityType.NOTE, note_id,
+        )
+
+        # Query with direction=None for the belief
+        edges = edge_service.get_edges(EntityType.BELIEF, belief_id)
+        assert len(edges) == 1  # Should not be duplicated
+
+    def test_both_directions_combines_in_and_out(self, edge_service):
+        """direction=None should return both outgoing and incoming edges."""
+        belief_id = uuid.uuid4()
+        note1 = uuid.uuid4()
+        note2 = uuid.uuid4()
+
+        # Outgoing edge
+        edge_service.create_edge(
+            EntityType.BELIEF, belief_id, RelType.RELATED_TO,
+            EntityType.NOTE, note1,
+        )
+        # Incoming edge
+        edge_service.create_edge(
+            EntityType.NOTE, note2, RelType.SUPPORTS,
+            EntityType.BELIEF, belief_id,
+        )
+
+        edges = edge_service.get_edges(EntityType.BELIEF, belief_id)
+        assert len(edges) == 2

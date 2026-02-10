@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import sqlite3
 import uuid
 from typing import Any
@@ -17,6 +18,8 @@ from second_brain.core.models import (
 )
 from second_brain.core.services.audit import AuditService
 from second_brain.storage.sqlite import Database
+
+logger = logging.getLogger(__name__)
 
 
 class NoteService:
@@ -149,6 +152,7 @@ class NoteService:
                 (query,),
             )
         except sqlite3.OperationalError:
+            logger.warning("FTS5 search failed for query %r", query, exc_info=True)
             return []
         return [self._row_to_note(row) for row in rows]
 

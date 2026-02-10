@@ -92,6 +92,46 @@ class TestConfidence:
         )
         assert conf_custom > conf_default
 
+    def test_confidence_zero_weights(self, belief_service, edge_service):
+        """With both weights set to 0, edges should not affect confidence."""
+        belief = belief_service.create_belief(claim_text="Zero weights")
+        for _ in range(5):
+            edge_service.create_edge(
+                EntityType.NOTE, uuid.uuid4(), RelType.SUPPORTS,
+                EntityType.BELIEF, belief.belief_id,
+            )
+        conf = compute_confidence(
+            belief.belief_id, belief_service, edge_service,
+            support_weight=0.0, contradiction_weight=0.0,
+        )
+        # Should be close to base_confidence * decay (near 0.5)
+        assert 0.4 <= conf <= 0.5
+
+    def test_confidence_equal_supports_and_contradicts(self, belief_service, edge_service):
+        """Equal supports and contradicts should cancel out, leaving base confidence."""
+        belief = belief_service.create_belief(claim_text="Balanced edges")
+        for _ in range(3):
+            edge_service.create_edge(
+                EntityType.NOTE, uuid.uuid4(), RelType.SUPPORTS,
+                EntityType.BELIEF, belief.belief_id,
+            )
+            edge_service.create_edge(
+                EntityType.NOTE, uuid.uuid4(), RelType.CONTRADICTS,
+                EntityType.BELIEF, belief.belief_id,
+            )
+        conf = compute_confidence(belief.belief_id, belief_service, edge_service)
+        # 0.5 + 0.1*3 - 0.1*3 = 0.5 (times decay)
+        assert 0.4 <= conf <= 0.5
+
+    def test_confidence_high_base_with_zero_contradictions(self, belief_service, edge_service):
+        """High base confidence with no contradictions stays near base."""
+        belief = belief_service.create_belief(claim_text="High base")
+        conf = compute_confidence(
+            belief.belief_id, belief_service, edge_service,
+            base_confidence=0.9,
+        )
+        assert conf > 0.8
+
 
 class TestContradictions:
     def test_is_negation_not_insertion(self):
