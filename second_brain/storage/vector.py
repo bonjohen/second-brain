@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import logging
+
 import numpy as np
 
 from second_brain.storage.sqlite import Database
+
+logger = logging.getLogger(__name__)
 
 
 class VectorStore:
@@ -46,21 +50,32 @@ class VectorStore:
             return None
         return np.frombuffer(row["embedding"], dtype=np.float32)
 
-    def search_similar(self, query_text: str, top_k: int = 5) -> list[tuple[str, float]]:
+    def search_similar(
+        self, query_text: str, top_k: int = 5, max_candidates: int = 10_000
+    ) -> list[tuple[str, float]]:
         """Find the most similar notes to the query text.
 
         Returns list of (note_id, similarity_score) sorted by descending similarity.
         """
         query_embedding = self.compute_embedding(query_text)
 
-        rows = self._db.fetchall("SELECT note_id, embedding FROM embeddings")
+        rows = self._db.fetchall(
+            "SELECT note_id, embedding FROM embeddings LIMIT ?",
+            (max_candidates,),
+        )
         if not rows:
             return []
+
+        if len(rows) == max_candidates:
+            logger.warning(
+                "search_similar hit max_candidates=%d; results may be incomplete",
+                max_candidates,
+            )
 
         results: list[tuple[str, float]] = []
         for row in rows:
             stored = np.frombuffer(row["embedding"], dtype=np.float32)
-            score = self._cosine_similarity(query_embedding, stored)
+            score = self.cosine_similarity(query_embedding, stored)
             results.append((row["note_id"], float(score)))
 
         results.sort(key=lambda x: x[1], reverse=True)
@@ -68,16 +83,22 @@ class VectorStore:
 
     def rebuild_index(self, notes_service) -> int:
         """Recompute embeddings for all notes. Returns count of notes indexed."""
-        notes = notes_service.list_notes(limit=10000)
+        offset = 0
+        batch_size = 1000
         count = 0
-        for note in notes:
-            embedding = self.compute_embedding(note.content)
-            self.store_embedding(str(note.note_id), embedding)
-            count += 1
+        while True:
+            batch = notes_service.list_notes(limit=batch_size, offset=offset)
+            if not batch:
+                break
+            for note in batch:
+                embedding = self.compute_embedding(note.content)
+                self.store_embedding(str(note.note_id), embedding)
+                count += 1
+            offset += batch_size
         return count
 
     @staticmethod
-    def _cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
+    def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
         """Compute cosine similarity between two vectors."""
         norm_a = np.linalg.norm(a)
         norm_b = np.linalg.norm(b)

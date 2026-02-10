@@ -1,6 +1,7 @@
 """Tests for SQLite storage layer and migrations."""
 
 import sqlite3
+import threading
 
 import pytest
 
@@ -144,3 +145,21 @@ class TestDatabase:
                 VALUES ('test-e2', 'invalid_type', 'id1', 'supports', 'belief', 'id2')
                 """
             )
+
+    def test_rejects_cross_thread_access(self, tmp_path):
+        db = Database(tmp_path / "thread_test.db")
+        error = None
+
+        def bg():
+            nonlocal error
+            try:
+                db.execute("SELECT 1")
+            except RuntimeError as exc:
+                error = exc
+
+        t = threading.Thread(target=bg)
+        t.start()
+        t.join()
+        db.close()
+        assert error is not None
+        assert "different thread" in str(error)

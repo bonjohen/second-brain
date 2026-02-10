@@ -56,6 +56,30 @@ class NoteService:
             return None
         return self._row_to_source(row)
 
+    def update_source_trust(
+        self,
+        source_id: uuid.UUID,
+        new_trust_label: TrustLabel,
+    ) -> Source:
+        """Update trust label for a source. Raises ValueError if not found."""
+        source = self.get_source(source_id)
+        if source is None:
+            raise ValueError(f"Source not found: {source_id}")
+
+        old_trust = source.trust_label
+        self._db.execute(
+            "UPDATE sources SET trust_label = ? WHERE source_id = ?",
+            (new_trust_label.value, str(source_id)),
+        )
+        self._audit.log_event(
+            entity_type="source",
+            entity_id=source_id,
+            action="trust_updated",
+            before={"trust_label": old_trust.value},
+            after={"trust_label": new_trust_label.value},
+        )
+        return self.get_source(source_id)
+
     def create_note(
         self,
         content: str,

@@ -3,6 +3,8 @@
 import hashlib
 import uuid
 
+import pytest
+
 from second_brain.core.models import ContentType, SourceKind, TrustLabel
 
 
@@ -119,3 +121,15 @@ class TestNoteService:
         assert len(page1) == 2
         assert len(page2) == 2
         assert page1[0].note_id != page2[0].note_id
+
+    def test_update_source_trust(self, note_service, audit_service):
+        source = note_service.create_source(SourceKind.USER, "test", TrustLabel.UNKNOWN)
+        updated = note_service.update_source_trust(source.source_id, TrustLabel.TRUSTED)
+        assert updated.trust_label == TrustLabel.TRUSTED
+
+        history = audit_service.get_history("source", source.source_id)
+        assert any(e.action == "trust_updated" for e in history)
+
+    def test_update_source_trust_not_found(self, note_service):
+        with pytest.raises(ValueError, match="Source not found"):
+            note_service.update_source_trust(uuid.uuid4(), TrustLabel.TRUSTED)

@@ -1,6 +1,9 @@
 """Tests for the CuratorAgent."""
 
 from datetime import UTC, datetime, timedelta
+from unittest.mock import MagicMock
+
+import numpy as np
 
 from second_brain.agents.curator import CuratorAgent
 from second_brain.core.models import BeliefStatus
@@ -131,3 +134,61 @@ class TestCuratorAgent:
         agent.distill_notes()
         second = agent.distill_notes()
         assert second == 0
+
+    def test_deduplicate_merges_beliefs(
+        self, note_service, belief_service, edge_service, signal_service, audit_service
+    ):
+        """Dedup should merge near-duplicate beliefs when similarity is high."""
+        mock_vs = MagicMock()
+        mock_vs.compute_embedding.side_effect = lambda text: np.ones(384, dtype=np.float32)
+        mock_vs.cosine_similarity.return_value = 0.99
+
+        agent = CuratorAgent(
+            note_service, belief_service, edge_service,
+            signal_service, audit_service, mock_vs,
+            similarity_threshold=0.95,
+        )
+
+        b1 = belief_service.create_belief(claim_text="Python is popular")
+        belief_service.update_belief_status(b1.belief_id, BeliefStatus.ACTIVE)
+        b2 = belief_service.create_belief(claim_text="Python is very popular")
+        belief_service.update_belief_status(b2.belief_id, BeliefStatus.ACTIVE)
+
+        merged = agent.deduplicate_beliefs()
+        assert merged == 1
+
+    def test_deduplicate_skips_bad_state(
+        self, note_service, belief_service, edge_service, signal_service, audit_service
+    ):
+        """Dedup should not crash when a belief has a bad state transition."""
+        mock_vs = MagicMock()
+        mock_vs.compute_embedding.side_effect = lambda text: np.ones(384, dtype=np.float32)
+        mock_vs.cosine_similarity.return_value = 0.99
+
+        agent = CuratorAgent(
+            note_service, belief_service, edge_service,
+            signal_service, audit_service, mock_vs,
+            similarity_threshold=0.95,
+        )
+
+        b1 = belief_service.create_belief(claim_text="Fact A")
+        belief_service.update_belief_status(b1.belief_id, BeliefStatus.ACTIVE)
+
+        b2 = belief_service.create_belief(claim_text="Fact A duplicate")
+        belief_service.update_belief_status(b2.belief_id, BeliefStatus.ACTIVE)
+
+        # Simulate a race: patch update_belief_status to fail on b2's transition
+        original = belief_service.update_belief_status
+
+        def patched(bid, new_status):
+            if bid == b2.belief_id and new_status == BeliefStatus.CHALLENGED:
+                raise ValueError("Simulated bad state transition")
+            return original(bid, new_status)
+
+        belief_service.update_belief_status = patched
+
+        # Should not raise -- the try/except catches the ValueError
+        merged = agent.deduplicate_beliefs()
+        assert merged == 1
+
+        belief_service.update_belief_status = original

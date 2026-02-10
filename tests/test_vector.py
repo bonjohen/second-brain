@@ -91,19 +91,19 @@ class TestVectorStore:
 
     def test_cosine_similarity_identical(self):
         a = np.ones(10, dtype=np.float32)
-        score = VectorStore._cosine_similarity(a, a)
+        score = VectorStore.cosine_similarity(a, a)
         assert abs(score - 1.0) < 1e-6
 
     def test_cosine_similarity_opposite(self):
         a = np.ones(10, dtype=np.float32)
         b = -np.ones(10, dtype=np.float32)
-        score = VectorStore._cosine_similarity(a, b)
+        score = VectorStore.cosine_similarity(a, b)
         assert abs(score - (-1.0)) < 1e-6
 
     def test_cosine_similarity_zero_vector(self):
         a = np.zeros(10, dtype=np.float32)
         b = np.ones(10, dtype=np.float32)
-        score = VectorStore._cosine_similarity(a, b)
+        score = VectorStore.cosine_similarity(a, b)
         assert score == 0.0
 
     def test_rebuild_index(self, db, note_service):
@@ -115,6 +115,22 @@ class TestVectorStore:
 
         count = store.rebuild_index(note_service)
         assert count == 2
+
+    def test_search_similar_respects_max_candidates(self, db, note_service):
+        """search_similar with max_candidates caps the number of embeddings considered."""
+        store = self._make_store(db)
+        ids = []
+        for i in range(5):
+            nid = self._create_note(note_service)
+            ids.append(nid)
+            store.store_embedding(nid, np.ones(384, dtype=np.float32) * (i + 1))
+
+        store._model.encode.side_effect = lambda text, **kwargs: np.ones(
+            384, dtype=np.float32
+        )
+
+        results = store.search_similar("test", top_k=10, max_candidates=3)
+        assert len(results) <= 3
 
     def test_lazy_load_model(self, db):
         """Verify model is not loaded on construction."""

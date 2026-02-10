@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+import threading
 from collections.abc import Generator
 from contextlib import contextmanager
 from datetime import UTC, datetime
@@ -26,11 +27,20 @@ class Database:
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA foreign_keys=ON")
         self._conn.execute("PRAGMA busy_timeout=5000")
+        self._owner_thread = threading.get_ident()
         self.run_migrations()
+
+    def _check_thread(self) -> None:
+        """Raise RuntimeError if called from a thread other than the owner."""
+        if threading.get_ident() != self._owner_thread:
+            raise RuntimeError(
+                "Database accessed from a different thread than the one that created it"
+            )
 
     @contextmanager
     def connection(self) -> Generator[sqlite3.Connection, None, None]:
         """Yield the connection; commit on success, rollback on error."""
+        self._check_thread()
         try:
             yield self._conn
             self._conn.commit()
@@ -41,6 +51,7 @@ class Database:
     @contextmanager
     def transaction(self) -> Generator[sqlite3.Cursor, None, None]:
         """Yield a cursor inside an explicit transaction."""
+        self._check_thread()
         cursor = self._conn.cursor()
         try:
             cursor.execute("BEGIN")
@@ -58,6 +69,7 @@ class Database:
         params: tuple[Any, ...] | dict[str, Any] = (),
     ) -> sqlite3.Cursor:
         """Execute a single SQL statement and commit."""
+        self._check_thread()
         cursor = self._conn.execute(sql, params)
         self._conn.commit()
         return cursor
@@ -68,6 +80,7 @@ class Database:
         params: tuple[Any, ...] | dict[str, Any] = (),
     ) -> sqlite3.Row | None:
         """Execute SQL and return first row or None."""
+        self._check_thread()
         return self._conn.execute(sql, params).fetchone()
 
     def fetchall(
@@ -76,6 +89,7 @@ class Database:
         params: tuple[Any, ...] | dict[str, Any] = (),
     ) -> list[sqlite3.Row]:
         """Execute SQL and return all rows."""
+        self._check_thread()
         return self._conn.execute(sql, params).fetchall()
 
     def run_migrations(self) -> None:

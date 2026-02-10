@@ -10,7 +10,7 @@ from pathlib import Path
 
 import click
 
-from second_brain.core.models import ContentType, SourceKind
+from second_brain.core.models import ContentType, SourceKind, TrustLabel
 
 
 def _get_services(db_path: str | None = None):
@@ -312,16 +312,11 @@ def trust(ctx: click.Context, source_id: str, level: str) -> None:
         click.echo(f"Error: invalid UUID: {source_id}", err=True)
         raise SystemExit(1) from None
 
-    source = notes_svc.get_source(sid)
-    if source is None:
-        click.echo(f"Source not found: {source_id}", err=True)
-        raise SystemExit(1)
-
-    db._conn.execute(
-        "UPDATE sources SET trust_label = ? WHERE source_id = ?",
-        (level, str(sid)),
-    )
-    db._conn.commit()
+    try:
+        notes_svc.update_source_trust(sid, TrustLabel(level))
+    except ValueError as exc:
+        click.echo(f"Error: {exc}", err=True)
+        raise SystemExit(1) from None
 
     signals.emit(
         "source_trust_updated",

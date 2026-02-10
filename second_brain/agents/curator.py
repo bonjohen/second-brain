@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -11,6 +12,8 @@ from second_brain.core.services.beliefs import BeliefService
 from second_brain.core.services.edges import EdgeService
 from second_brain.core.services.notes import NoteService
 from second_brain.core.services.signals import SignalService
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_COLD_DAYS = 90
 DEFAULT_SIMILARITY_THRESHOLD = 0.95
@@ -73,10 +76,16 @@ class CuratorAgent:
                 updated_at = updated_at.replace(tzinfo=UTC)
 
             if updated_at < cutoff:
-                self._beliefs.update_belief_status(
-                    belief.belief_id, BeliefStatus.ARCHIVED
-                )
-                count += 1
+                try:
+                    self._beliefs.update_belief_status(
+                        belief.belief_id, BeliefStatus.ARCHIVED
+                    )
+                    count += 1
+                except ValueError:
+                    logger.warning(
+                        "Skipping archive for belief %s: invalid state transition",
+                        belief.belief_id,
+                    )
 
         return count
 
@@ -114,7 +123,7 @@ class CuratorAgent:
                 if str(bid_j) in merged_ids:
                     continue
 
-                sim = self._vector_store._cosine_similarity(
+                sim = self._vector_store.cosine_similarity(
                     embeddings[i][1], embeddings[j][1]
                 )
                 if sim >= self._similarity_threshold:
@@ -136,18 +145,24 @@ class CuratorAgent:
 
                     # Deprecate the duplicate
                     belief_j = self._beliefs.get_belief(bid_j)
-                    if belief_j and belief_j.status in (
-                        BeliefStatus.PROPOSED, BeliefStatus.ACTIVE
-                    ):
-                        if belief_j.status == BeliefStatus.PROPOSED:
+                    try:
+                        if belief_j and belief_j.status in (
+                            BeliefStatus.PROPOSED, BeliefStatus.ACTIVE
+                        ):
+                            if belief_j.status == BeliefStatus.PROPOSED:
+                                self._beliefs.update_belief_status(
+                                    bid_j, BeliefStatus.ACTIVE
+                                )
                             self._beliefs.update_belief_status(
-                                bid_j, BeliefStatus.ACTIVE
+                                bid_j, BeliefStatus.CHALLENGED
                             )
-                        self._beliefs.update_belief_status(
-                            bid_j, BeliefStatus.CHALLENGED
-                        )
-                        self._beliefs.update_belief_status(
-                            bid_j, BeliefStatus.DEPRECATED
+                            self._beliefs.update_belief_status(
+                                bid_j, BeliefStatus.DEPRECATED
+                            )
+                    except ValueError:
+                        logger.warning(
+                            "Skipping deprecation for belief %s: invalid state transition",
+                            bid_j,
                         )
 
                     # Create related_to edge between kept and merged
