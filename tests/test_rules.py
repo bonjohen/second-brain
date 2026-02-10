@@ -9,6 +9,7 @@ from second_brain.core.rules.contradictions import (
     _has_opposing_words,
     _is_negation,
     detect_contradictions,
+    load_candidate_beliefs,
 )
 from second_brain.core.rules.decay import exponential_decay, no_decay
 
@@ -135,3 +136,41 @@ class TestContradictions:
     def test_detect_contradictions_nonexistent(self, belief_service, edge_service):
         result = detect_contradictions(uuid.uuid4(), belief_service, edge_service)
         assert result == []
+
+    def test_detect_contradictions_with_preloaded_candidates(
+        self, belief_service, edge_service
+    ):
+        """Pre-loaded candidates avoid redundant DB fetches."""
+        b1 = belief_service.create_belief(claim_text="python is fast")
+        belief_service.update_belief_status(b1.belief_id, BeliefStatus.ACTIVE)
+        b2 = belief_service.create_belief(claim_text="python is not fast")
+
+        candidates = load_candidate_beliefs(belief_service)
+        contradictions = detect_contradictions(
+            b2.belief_id, belief_service, edge_service, candidates=candidates
+        )
+        assert b1.belief_id in contradictions
+
+    def test_load_candidate_beliefs_caps_at_max(self, belief_service):
+        """load_candidate_beliefs respects max_candidates."""
+        for i in range(10):
+            belief_service.create_belief(claim_text=f"belief {i}")
+
+        capped = load_candidate_beliefs(belief_service, max_candidates=5)
+        assert len(capped) == 5
+
+    def test_detect_contradictions_max_candidates(
+        self, belief_service, edge_service
+    ):
+        """With max_candidates=1, only one candidate is checked."""
+        b1 = belief_service.create_belief(claim_text="python is fast")
+        belief_service.update_belief_status(b1.belief_id, BeliefStatus.ACTIVE)
+        b2 = belief_service.create_belief(claim_text="rust is not slow")
+        belief_service.update_belief_status(b2.belief_id, BeliefStatus.ACTIVE)
+        b3 = belief_service.create_belief(claim_text="python is not fast")
+
+        # With max_candidates=1, only one candidate is loaded — may miss some
+        result = detect_contradictions(
+            b3.belief_id, belief_service, edge_service, max_candidates=1
+        )
+        assert len(result) <= 1

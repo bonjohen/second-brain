@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 
-from second_brain.core.models import BeliefStatus
+from second_brain.core.models import Belief, BeliefStatus
 from second_brain.core.services.beliefs import BeliefService
 from second_brain.core.services.edges import EdgeService
+
+logger = logging.getLogger(__name__)
 
 # Word pairs that indicate opposing predicates
 OPPOSING_PAIRS: list[tuple[str, str]] = [
@@ -29,14 +32,58 @@ OPPOSING_PAIRS: list[tuple[str, str]] = [
 ]
 
 
+DEFAULT_MAX_CANDIDATES = 500
+
+
+def load_candidate_beliefs(
+    belief_service: BeliefService,
+    max_candidates: int = DEFAULT_MAX_CANDIDATES,
+) -> list[Belief]:
+    """Pre-load proposed and active beliefs for contradiction checking.
+
+    Callers processing multiple beliefs should call this once and pass the
+    result to ``detect_contradictions`` to avoid redundant O(n) fetches.
+    """
+    candidates: list[Belief] = []
+    for status in (BeliefStatus.PROPOSED, BeliefStatus.ACTIVE):
+        offset = 0
+        batch_size = 500
+        while True:
+            batch = belief_service.list_beliefs(
+                status_filter=status, limit=batch_size, offset=offset
+            )
+            if not batch:
+                break
+            candidates.extend(batch)
+            if len(candidates) >= max_candidates:
+                candidates = candidates[:max_candidates]
+                break
+            offset += batch_size
+        if len(candidates) >= max_candidates:
+            break
+
+    if len(candidates) >= max_candidates:
+        logger.warning(
+            "Contradiction candidates capped at %d; some beliefs may be skipped",
+            max_candidates,
+        )
+    return candidates
+
+
 def detect_contradictions(
     belief_id: uuid.UUID,
     belief_service: BeliefService,
     edge_service: EdgeService,
+    *,
+    candidates: list[Belief] | None = None,
+    max_candidates: int = DEFAULT_MAX_CANDIDATES,
 ) -> list[uuid.UUID]:
     """Detect beliefs that may contradict the given belief.
 
     Returns a list of belief IDs that are potential contradictions.
+
+    Pass pre-loaded *candidates* to avoid re-fetching all beliefs on every
+    call (important when checking contradictions in a loop).
 
     Heuristics:
     1. Exact negation: claim contains "not" version of another claim (or vice versa)
@@ -49,10 +96,9 @@ def detect_contradictions(
     claim_words = set(belief.claim_text.lower().split())
     claim_lower = belief.claim_text.lower().strip()
 
-    # Get all active/proposed beliefs to check against
-    candidates: list = []
-    for status in (BeliefStatus.PROPOSED, BeliefStatus.ACTIVE):
-        candidates.extend(belief_service.list_beliefs(status_filter=status, limit=1000))
+    # Use pre-loaded candidates or fetch them
+    if candidates is None:
+        candidates = load_candidate_beliefs(belief_service, max_candidates)
 
     contradictions: list[uuid.UUID] = []
 

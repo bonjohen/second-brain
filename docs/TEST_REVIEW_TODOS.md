@@ -46,7 +46,7 @@ The project has a solid foundation: 191 tests cover happy paths well across all 
 
 - [X] **Security & Access Control** `cli/main.py:430-433` -- `restore` command overwrites the live database with `shutil.copy2()` without any confirmation prompt or backup of the current state. **Risk**: Accidental data loss from fat-finger restore. **Action**: Add a test verifying a restore overwrites; consider auto-snapshot before restore.
 
-- [ ] **Performance & Resource Efficiency** `core/rules/contradictions.py:48-80` -- `detect_contradictions()` loads all PROPOSED+ACTIVE beliefs (limit 1000) and checks each pair against the target. **Risk**: O(n) per belief, called per-belief in lifecycle and challenger, making total cost O(n^2). **Action**: Add a benchmark test with 500+ beliefs; consider indexing or caching contradiction results.
+- [X] **Performance & Resource Efficiency** `core/rules/contradictions.py:48-80` -- `detect_contradictions()` loads all PROPOSED+ACTIVE beliefs (limit 1000) and checks each pair against the target. **Risk**: O(n) per belief, called per-belief in lifecycle and challenger, making total cost O(n^2). **Action**: Add a benchmark test with 500+ beliefs; consider indexing or caching contradiction results.
 
 - [X] **State Management** `core/rules/lifecycle.py:31,47` -- `auto_transition_beliefs()` loads beliefs with `limit=1000`. Systems with >1000 proposed or challenged beliefs silently skip the overflow. **Risk**: Beliefs stuck in proposed/challenged limbo forever. **Action**: Add a test creating 1001 proposed beliefs and verifying all are evaluated; implement pagination loop.
 

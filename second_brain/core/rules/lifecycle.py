@@ -6,7 +6,10 @@ import uuid
 
 from second_brain.core.models import BeliefStatus
 from second_brain.core.rules.confidence import compute_confidence
-from second_brain.core.rules.contradictions import detect_contradictions
+from second_brain.core.rules.contradictions import (
+    detect_contradictions,
+    load_candidate_beliefs,
+)
 from second_brain.core.services.beliefs import BeliefService
 from second_brain.core.services.edges import EdgeService
 
@@ -27,6 +30,9 @@ def auto_transition_beliefs(
     activated: list[uuid.UUID] = []
     deprecated: list[uuid.UUID] = []
 
+    # Pre-load candidates once for all contradiction checks (avoids O(n²) re-fetch)
+    contradiction_candidates = load_candidate_beliefs(belief_service)
+
     # proposed -> active: confidence >= threshold AND no contradictions
     offset = 0
     batch_size = 500
@@ -39,7 +45,8 @@ def auto_transition_beliefs(
         for belief in proposed:
             conf = compute_confidence(belief.belief_id, belief_service, edge_service)
             contradictions = detect_contradictions(
-                belief.belief_id, belief_service, edge_service
+                belief.belief_id, belief_service, edge_service,
+                candidates=contradiction_candidates,
             )
             if conf >= activation_threshold and not contradictions:
                 belief_service.update_belief_status(
