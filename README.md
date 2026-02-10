@@ -5,11 +5,35 @@ A local, persistent cognitive substrate built in Python. Second Brain captures i
 ## What It Does
 
 - **Captures** user-authored notes from multiple sources (text, markdown, PDF, transcripts, code)
-- **Structures** information with tags, entities, and full-text search
+- **Structures** information with tags, entities, full-text search, and vector similarity
 - **Derives beliefs** from stored evidence with explicit confidence scores
 - **Detects contradictions** and manages belief lifecycles (proposed, active, challenged, deprecated, archived)
 - **Answers questions** grounded only in stored evidence with verifiable citations
 - **Self-maintains** via scheduled curation, decay, deduplication, and archival
+
+## Quick Start
+
+```bash
+# Install (requires Python 3.12+)
+pip install -e .
+# or with uv:
+uv sync
+
+# Add your first note
+sb add "Python's GIL prevents true parallelism in CPU-bound threads #python #concurrency"
+
+# Search your notes
+sb search "python concurrency"
+
+# Run agents to derive beliefs and detect contradictions
+sb run
+
+# Ask a question
+sb ask "What do I know about Python concurrency?"
+
+# See a full report
+sb report
+```
 
 ## Core Principles
 
@@ -17,7 +41,7 @@ A local, persistent cognitive substrate built in Python. Second Brain captures i
 - **Traceability** -- every belief, answer, and mutation links back to evidence
 - **Challengeability** -- contradictions are explicit; unresolved states are valid
 - **Persistence** -- all state survives restarts; no in-memory-only state
-- **Local-first** -- no implicit network access
+- **Local-first** -- no implicit network access; all data stays on your machine
 
 ## Architecture
 
@@ -27,9 +51,8 @@ second_brain/
 ├── agents/         # Ingestion, Synthesis, Challenger, Curator
 ├── storage/        # SQLite (source of truth), migrations, vector index
 ├── runtime/        # Dispatcher and scheduler
-├── cli/            # CLI entrypoint
-├── docs/           # Design documents
-└── tests/
+├── cli/            # CLI entrypoint (sb command)
+└── tests/          # 225 tests covering all layers
 ```
 
 ### Key Components
@@ -43,26 +66,68 @@ second_brain/
 
 ### Storage
 
-- **SQLite** is the single source of truth
-- Graph relationships are stored via an `edges` table
-- Vector index is derived state (fully rebuildable)
+- **SQLite** is the single source of truth (default: `~/.second_brain/brain.db`)
+- **FTS5** provides full-text search across notes, tags, and entities
+- **Vector index** enables semantic similarity via sentence-transformers (optional, graceful fallback)
+- **Edges table** implements a polymorphic graph for relationships between notes, beliefs, and sources
+- **Append-only audit log** records every mutation with before/after state
 
-## Pipelines
+### Belief Lifecycle
 
-**Add** -- Ingest a note via CLI, persist Note + Source, compute embedding, emit signal.
+```
+proposed ──→ active ──→ challenged ──→ deprecated ──→ archived
+               ↑            │
+               └────────────┘
+```
 
-**Ask** -- Keyword + vector search, retrieve active beliefs, assemble evidence, synthesize a cited answer.
+Beliefs are derived from evidence, scored with a confidence formula that accounts for supporting/contradicting edges and time decay, and automatically transitioned based on deterministic rules.
 
-**Proactive** -- Scheduled tick runs Curator, Challenger, and Synthesis agents to evolve the knowledge base.
+## CLI Commands
 
-## Implementation Phases
+| Command | Description |
+|---------|-------------|
+| `sb add [CONTENT]` | Add a note (reads stdin if no argument) |
+| `sb search QUERY` | Full-text search notes |
+| `sb show NOTE_ID` | Display full note details |
+| `sb ask QUESTION` | Query with evidence and beliefs |
+| `sb confirm BELIEF_ID` | Boost a belief's confidence (+0.1) |
+| `sb refute BELIEF_ID` | Reduce a belief's confidence (-0.1) |
+| `sb trust SOURCE_ID LEVEL` | Set source trust (user/trusted/unknown) |
+| `sb report` | Knowledge base status report |
+| `sb run` | Run all agents (curator, lifecycle, challenger, synthesis) |
+| `sb snapshot [PATH]` | Create a database backup |
+| `sb restore PATH` | Restore from a backup |
 
-| Phase | Focus | Outcome |
-|-------|-------|---------|
-| **0 -- Capture** | SQLite schema, Note/Source services, CLI add/search/show, FTS | Notes persist, searchable, audited |
-| **1 -- Reasoning** | Belief/Edge services, confidence/decay rules, vector embeddings, ask pipeline | Beliefs tracked, contradictions handled, answers grounded |
-| **2 -- Proactive** | Scheduler, CuratorAgent, archive/merge/distill, snapshot/restore | Self-maintaining system with full auditability |
+Run `sb --help` or `sb <command> --help` for full option details.
 
-## Design Document
+## Configuration
 
-See [docs/PDR.MD](docs/PDR.MD) for the full executable technical design document including object schemas, lifecycle rules, agent specifications, and deterministic confidence formulas.
+| Setting | Method | Default |
+|---------|--------|---------|
+| Database path | `--db PATH` or `SB_DB_PATH` env var | `~/.second_brain/brain.db` |
+| Vector search | Automatic if `sentence-transformers` installed | FTS-only fallback |
+
+## Documentation
+
+- **[Usage Guide](docs/USAGE.md)** -- detailed walkthrough of all commands and workflows
+- **[Design Document](docs/PDR.MD)** -- full technical design with schemas, rules, and agent specs
+
+## Development
+
+```bash
+# Install with dev dependencies
+uv sync
+
+# Run tests
+uv run pytest
+
+# Run tests with coverage
+uv run pytest --cov=second_brain
+
+# Lint
+uv run ruff check .
+```
+
+## License
+
+This project is for personal use.

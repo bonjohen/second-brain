@@ -44,10 +44,7 @@ The project has a solid foundation: 191 tests cover happy paths well across all 
 
 - [X] **Error Handling & Failure Modes** `core/services/edges.py:90-95` -- `delete_edge()` silently succeeds even if the edge doesn't exist (SQL `DELETE WHERE` matches 0 rows). **Risk**: Callers cannot distinguish between successful deletion and no-op. **Action**: Add a test that deletes a nonexistent edge_id and verifies behavior; return a boolean or raise if not found.
 
-- [X] **Security & Access Control** `cli/main.py:430-433` -- `restore` command overwrites the live database with `shutil.copy2()` without any confirmation prompt or backup of the current state. **Risk**: Accidental data loss from fat-finger restore. **Action**: Add a test verifying a restore overwrites; consider auto-snapshot before restore.
-
-- [X] **Performance & Resource Efficiency** `core/rules/contradictions.py:48-80` -- `detect_contradictions()` loads all PROPOSED+ACTIVE beliefs (limit 1000) and checks each pair against the target. **Risk**: O(n) per belief, called per-belief in lifecycle and challenger, making total cost O(n^2). **Action**: Add a benchmark test with 500+ beliefs; consider indexing or caching contradiction results.
-
+- [X] **Security & Access Control** `cli/main.py:430-433` -- `restore` command overwrites the live database with `shutil.copy2()` without any confirmation prompt or backup of the current state. **Risk**: Accidental data loss from fat-finger restore. **Action**: Add a test verifying a22
 - [X] **State Management** `core/rules/lifecycle.py:31,47` -- `auto_transition_beliefs()` loads beliefs with `limit=1000`. Systems with >1000 proposed or challenged beliefs silently skip the overflow. **Risk**: Beliefs stuck in proposed/challenged limbo forever. **Action**: Add a test creating 1001 proposed beliefs and verifying all are evaluated; implement pagination loop.
 
 - [X] **Data Pipeline & ETL** `agents/curator.py:117` -- `self._vector_store._cosine_similarity()` accesses a private method across class boundaries. **Risk**: Internal API change in VectorStore breaks CuratorAgent with no compile-time warning. **Action**: Make `_cosine_similarity` public (rename to `cosine_similarity`) or add a public `compare(a, b)` method.
