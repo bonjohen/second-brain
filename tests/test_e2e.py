@@ -1,16 +1,21 @@
-"""End-to-end tests for the full Phase 0 stack."""
+"""End-to-end tests for the full stack."""
+
+from datetime import UTC, datetime, timedelta
 
 from click.testing import CliRunner
 
 from second_brain.agents.challenger import ChallengerAgent
+from second_brain.agents.curator import CuratorAgent
 from second_brain.agents.ingestion import IngestionAgent
 from second_brain.agents.synthesis import SynthesisAgent
 from second_brain.core.models import BeliefStatus, EntityType
+from second_brain.core.rules.lifecycle import auto_transition_beliefs
 from second_brain.core.services.audit import AuditService
 from second_brain.core.services.beliefs import BeliefService
 from second_brain.core.services.edges import EdgeService
 from second_brain.core.services.notes import NoteService
 from second_brain.core.services.signals import SignalService
+from second_brain.runtime.scheduler import Scheduler
 from second_brain.storage.sqlite import Database
 
 
@@ -161,6 +166,80 @@ class TestEndToEnd:
         # 4. Verify audit trail captures the full lifecycle
         fast_history = audit.get_history("belief", b_fast.belief_id)
         actions = [entry.action for entry in fast_history]
+        assert "created" in actions
+        assert "status_changed" in actions
+
+        db.close()
+
+    def test_phase2_full_lifecycle(self, tmp_path):
+        """Phase 2 E2E: ingest → synthesize → lifecycle → curator → scheduler."""
+        import uuid
+
+        from second_brain.core.models import RelType
+
+        db_path = tmp_path / "phase2.db"
+        db = Database(db_path)
+        audit = AuditService(db)
+        signals = SignalService(db)
+        notes = NoteService(db, audit)
+        edges = EdgeService(db)
+        beliefs = BeliefService(db, audit, edges)
+        agent = IngestionAgent(notes, signals)
+
+        # 1. Ingest notes
+        agent.ingest("Rust is memory safe #rust")
+        agent.ingest("Rust has zero-cost abstractions #rust")
+        agent.ingest("Rust is hard to learn #rust")
+
+        # 2. Synthesis creates beliefs
+        synth = SynthesisAgent(notes, beliefs, edges, signals)
+        created = synth.run()
+        assert len(created) >= 1
+
+        # 3. Auto-lifecycle: proposed with enough support → active
+        for bid in created:
+            for _ in range(3):
+                edges.create_edge(
+                    EntityType.NOTE, uuid.uuid4(), RelType.SUPPORTS,
+                    EntityType.BELIEF, bid,
+                )
+        result = auto_transition_beliefs(beliefs, edges)
+        assert len(result["activated"]) >= 1
+
+        # 4. Challenge and deprecate
+        b = beliefs.create_belief(claim_text="rust is easy", confidence=0.5)
+        beliefs.update_belief_status(b.belief_id, BeliefStatus.ACTIVE)
+        beliefs.update_belief_status(b.belief_id, BeliefStatus.CHALLENGED)
+        for _ in range(5):
+            edges.create_edge(
+                EntityType.BELIEF, uuid.uuid4(), RelType.CONTRADICTS,
+                EntityType.BELIEF, b.belief_id,
+            )
+        result2 = auto_transition_beliefs(beliefs, edges)
+        assert b.belief_id in result2["deprecated"]
+
+        # 5. Curator archives old deprecated beliefs
+        curator = CuratorAgent(notes, beliefs, edges, signals, audit, cold_days=0)
+        now = datetime.now(UTC) + timedelta(days=1)
+        archived = curator.archive_cold_beliefs(now=now)
+        assert archived >= 1
+
+        updated_b = beliefs.get_belief(b.belief_id)
+        assert updated_b.status == BeliefStatus.ARCHIVED
+
+        # 6. Scheduler runs all agents
+        scheduler = Scheduler()
+        scheduler.register("curator", curator.run)
+        scheduler.register(
+            "lifecycle",
+            lambda: auto_transition_beliefs(beliefs, edges),
+        )
+        results = scheduler.run_once()
+        assert len(results) == 2
+
+        # 7. Verify audit trail covers full lifecycle
+        history = audit.get_history("belief", b.belief_id)
+        actions = [entry.action for entry in history]
         assert "created" in actions
         assert "status_changed" in actions
 

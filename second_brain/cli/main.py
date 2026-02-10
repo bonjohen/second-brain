@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import shutil
 import sys
 import uuid
+from datetime import UTC, datetime
+from pathlib import Path
 
 import click
 
@@ -37,7 +40,7 @@ def _get_services(db_path: str | None = None):
         pass
 
     agent = IngestionAgent(notes, signals, vector_store=vector_store)
-    return db, notes, signals, agent, edges, beliefs, vector_store
+    return db, notes, signals, agent, edges, beliefs, vector_store, audit
 
 
 @click.group()
@@ -155,8 +158,8 @@ def show(ctx: click.Context, note_id: str) -> None:
 @click.pass_context
 def ask(ctx: click.Context, question: str, top_k: int) -> None:
     """Ask a question and get an answer with evidence and beliefs."""
-    db, notes_svc, _signals, _agent, edges_svc, beliefs_svc, vector_store = _get_services(
-        ctx.obj["db_path"]
+    db, notes_svc, _signals, _agent, edges_svc, beliefs_svc, vector_store, _audit = (
+        _get_services(ctx.obj["db_path"])
     )
 
     from second_brain.core.models import EntityType
@@ -211,7 +214,6 @@ def ask(ctx: click.Context, question: str, top_k: int) -> None:
         db.close()
         return
 
-    # Evidence notes
     if evidence:
         click.echo("=== Evidence Notes ===")
         for i, note in enumerate(evidence, 1):
@@ -220,7 +222,6 @@ def ask(ctx: click.Context, question: str, top_k: int) -> None:
             if note.tags:
                 click.echo(f"      tags: {', '.join(note.tags)}")
 
-    # Related beliefs
     if related_beliefs:
         click.echo("\n=== Related Beliefs ===")
         for belief in related_beliefs:
@@ -229,7 +230,6 @@ def ask(ctx: click.Context, question: str, top_k: int) -> None:
                 f"{belief.claim_text}"
             )
 
-    # Template-based cited answer
     click.echo("\n=== Answer ===")
     click.echo(f"Based on {len(evidence)} evidence note(s):")
     for i, note in enumerate(evidence, 1):
@@ -240,5 +240,226 @@ def ask(ctx: click.Context, question: str, top_k: int) -> None:
         click.echo(f"\nRelated beliefs ({len(related_beliefs)}):")
         for belief in related_beliefs:
             click.echo(f"  - {belief.claim_text} (confidence: {belief.confidence:.2f})")
+
+    db.close()
+
+
+# ── Phase 2 Commands ──────────────────────────────────────────────────
+
+
+@cli.command()
+@click.argument("belief_id")
+@click.pass_context
+def confirm(ctx: click.Context, belief_id: str) -> None:
+    """Confirm a belief -- boost its confidence."""
+    db, _notes, signals, _agent, edges_svc, beliefs_svc, _vs, _audit = _get_services(
+        ctx.obj["db_path"]
+    )
+    try:
+        bid = uuid.UUID(belief_id)
+    except ValueError:
+        click.echo(f"Error: invalid UUID: {belief_id}", err=True)
+        raise SystemExit(1) from None
+
+    belief = beliefs_svc.get_belief(bid)
+    if belief is None:
+        click.echo(f"Belief not found: {belief_id}", err=True)
+        raise SystemExit(1)
+
+    new_conf = min(1.0, belief.confidence + 0.1)
+    beliefs_svc.update_confidence(bid, new_conf)
+    signals.emit("belief_confirmed", {"belief_id": str(bid)})
+    click.echo(f"Belief confirmed. Confidence: {belief.confidence:.2f} -> {new_conf:.2f}")
+    db.close()
+
+
+@cli.command()
+@click.argument("belief_id")
+@click.pass_context
+def refute(ctx: click.Context, belief_id: str) -> None:
+    """Refute a belief -- reduce its confidence."""
+    db, _notes, signals, _agent, edges_svc, beliefs_svc, _vs, _audit = _get_services(
+        ctx.obj["db_path"]
+    )
+    try:
+        bid = uuid.UUID(belief_id)
+    except ValueError:
+        click.echo(f"Error: invalid UUID: {belief_id}", err=True)
+        raise SystemExit(1) from None
+
+    belief = beliefs_svc.get_belief(bid)
+    if belief is None:
+        click.echo(f"Belief not found: {belief_id}", err=True)
+        raise SystemExit(1)
+
+    new_conf = max(0.0, belief.confidence - 0.1)
+    beliefs_svc.update_confidence(bid, new_conf)
+    signals.emit("belief_refuted", {"belief_id": str(bid)})
+    click.echo(f"Belief refuted. Confidence: {belief.confidence:.2f} -> {new_conf:.2f}")
+    db.close()
+
+
+@cli.command()
+@click.argument("source_id")
+@click.argument("level", type=click.Choice(["user", "trusted", "unknown"]))
+@click.pass_context
+def trust(ctx: click.Context, source_id: str, level: str) -> None:
+    """Update trust level for a source."""
+    db, notes_svc, signals, *_ = _get_services(ctx.obj["db_path"])
+    try:
+        sid = uuid.UUID(source_id)
+    except ValueError:
+        click.echo(f"Error: invalid UUID: {source_id}", err=True)
+        raise SystemExit(1) from None
+
+    source = notes_svc.get_source(sid)
+    if source is None:
+        click.echo(f"Source not found: {source_id}", err=True)
+        raise SystemExit(1)
+
+    db._conn.execute(
+        "UPDATE sources SET trust_label = ? WHERE source_id = ?",
+        (level, str(sid)),
+    )
+    db._conn.commit()
+
+    signals.emit(
+        "source_trust_updated",
+        {"source_id": str(sid), "new_level": level},
+    )
+    click.echo(f"Source {sid} trust updated to: {level}")
+    db.close()
+
+
+@cli.command()
+@click.pass_context
+def report(ctx: click.Context) -> None:
+    """Generate a status report of the knowledge base."""
+    from second_brain.core.models import BeliefStatus, EntityType, RelType
+
+    db, notes_svc, _signals, _agent, edges_svc, beliefs_svc, _vs, _audit = _get_services(
+        ctx.obj["db_path"]
+    )
+
+    # Summary counts
+    all_notes = notes_svc.list_notes(limit=100000)
+    click.echo("=== Knowledge Base Report ===")
+    click.echo(f"Total notes: {len(all_notes)}")
+
+    for status in BeliefStatus:
+        beliefs = beliefs_svc.list_beliefs(status_filter=status, limit=100000)
+        if beliefs:
+            click.echo(f"Beliefs [{status.value}]: {len(beliefs)}")
+
+    # Active contradictions
+    click.echo("\n--- Active Contradictions ---")
+    challenged = beliefs_svc.list_beliefs(
+        status_filter=BeliefStatus.CHALLENGED, limit=100
+    )
+    if challenged:
+        for belief in challenged:
+            edges = edges_svc.get_edges(
+                EntityType.BELIEF, belief.belief_id,
+                direction="incoming", rel_type=RelType.CONTRADICTS,
+            )
+            click.echo(
+                f"  {belief.claim_text} "
+                f"(confidence: {belief.confidence:.2f}, contradictions: {len(edges)})"
+            )
+    else:
+        click.echo("  (none)")
+
+    # Beliefs approaching decay threshold
+    click.echo("\n--- Low Confidence Beliefs ---")
+    active = beliefs_svc.list_beliefs(status_filter=BeliefStatus.ACTIVE, limit=1000)
+    low_conf = [b for b in active if b.confidence < 0.3]
+    if low_conf:
+        for belief in low_conf:
+            click.echo(f"  {belief.claim_text} (confidence: {belief.confidence:.2f})")
+    else:
+        click.echo("  (none)")
+
+    # Recently archived
+    click.echo("\n--- Recently Archived ---")
+    archived = beliefs_svc.list_beliefs(
+        status_filter=BeliefStatus.ARCHIVED, limit=10
+    )
+    if archived:
+        for belief in archived:
+            click.echo(f"  {belief.claim_text}")
+    else:
+        click.echo("  (none)")
+
+    db.close()
+
+
+@cli.command()
+@click.argument("output_path", required=False)
+@click.pass_context
+def snapshot(ctx: click.Context, output_path: str | None) -> None:
+    """Create a full database backup."""
+    from second_brain.storage.sqlite import DEFAULT_DB_PATH
+
+    db_path = ctx.obj["db_path"] or str(DEFAULT_DB_PATH)
+    source = Path(db_path)
+    if not source.exists():
+        click.echo(f"Error: database not found at {db_path}", err=True)
+        raise SystemExit(1)
+
+    if output_path is None:
+        ts = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+        output_path = str(source.parent / f"brain_snapshot_{ts}.db")
+
+    shutil.copy2(str(source), output_path)
+    click.echo(f"Snapshot saved: {output_path}")
+
+
+@cli.command()
+@click.argument("snapshot_path")
+@click.pass_context
+def restore(ctx: click.Context, snapshot_path: str) -> None:
+    """Restore database from a snapshot."""
+    from second_brain.storage.sqlite import DEFAULT_DB_PATH
+
+    snap = Path(snapshot_path)
+    if not snap.exists():
+        click.echo(f"Error: snapshot not found at {snapshot_path}", err=True)
+        raise SystemExit(1)
+
+    db_path = ctx.obj["db_path"] or str(DEFAULT_DB_PATH)
+    target = Path(db_path)
+
+    shutil.copy2(str(snap), str(target))
+    click.echo(f"Database restored from: {snapshot_path}")
+
+
+@cli.command(name="run")
+@click.option("--once", is_flag=True, default=True, help="Run a single scheduler tick.")
+@click.pass_context
+def run_agents(ctx: click.Context, once: bool) -> None:
+    """Run all agents (scheduler tick)."""
+    from second_brain.agents.challenger import ChallengerAgent
+    from second_brain.agents.curator import CuratorAgent
+    from second_brain.agents.synthesis import SynthesisAgent
+    from second_brain.core.rules.lifecycle import auto_transition_beliefs
+    from second_brain.runtime.scheduler import Scheduler
+
+    db, notes_svc, signals, _agent, edges_svc, beliefs_svc, vs, audit = _get_services(
+        ctx.obj["db_path"]
+    )
+
+    curator = CuratorAgent(notes_svc, beliefs_svc, edges_svc, signals, audit, vs)
+    challenger = ChallengerAgent(beliefs_svc, edges_svc, signals)
+    synthesis = SynthesisAgent(notes_svc, beliefs_svc, edges_svc, signals)
+
+    scheduler = Scheduler()
+    scheduler.register("curator", curator.run)
+    scheduler.register("lifecycle", lambda: auto_transition_beliefs(beliefs_svc, edges_svc))
+    scheduler.register("challenger", challenger.run)
+    scheduler.register("synthesis", synthesis.run)
+
+    results = scheduler.run_once()
+    for name, result in results:
+        click.echo(f"  {name}: {result}")
 
     db.close()

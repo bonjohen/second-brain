@@ -217,89 +217,89 @@ The goal of this phase is to make the system self-maintaining with scheduled bac
 
 ### 2.1 Signal Dispatcher
 
-- [ ] Implement `runtime/dispatcher.py`
+- [x] Implement `runtime/dispatcher.py`
   - Poll unprocessed signals
   - Route signals to registered agent handlers by signal type
   - Mark signals as processed after handling
   - Handle errors: log failures, do not mark as processed on error
-- [ ] Write tests for dispatch routing, error handling, idempotency
+- [x] Write tests for dispatch routing, error handling, idempotency
 
 ### 2.2 Scheduler
 
-- [ ] Implement `runtime/scheduler.py`
+- [x] Implement `runtime/scheduler.py`
   - Configurable tick interval
   - On each tick, invoke agents in defined order: Curator, Challenger, Synthesis
   - Emit scheduling signals or call agents directly
   - Support run-once mode (for CLI invocation) and continuous mode
-- [ ] Write tests for scheduling order, tick behavior
+- [x] Write tests for scheduling order, tick behavior
 
 ### 2.3 CuratorAgent
 
-- [ ] Implement `agents/curator.py`
+- [x] Implement `agents/curator.py`
   - **Archive**: identify beliefs/notes not referenced in N days, mark for archive with grace period
   - **Deduplicate**: find notes/beliefs with cosine similarity >= threshold, merge
   - **Distill**: create summary notes from clusters of related notes
   - All actions logged to audit trail
   - No silent deletion — archived items remain queryable
-- [ ] Write tests for archive, dedup, and distill logic
+- [x] Write tests for archive, dedup, and distill logic
 
 ### 2.4 Belief Status Automation
 
-- [ ] Wire automatic status transitions into scheduled runs:
+- [x] Wire automatic status transitions into scheduled runs:
   - `proposed -> active` when confidence >= activation_threshold and no contradictions
   - `challenged -> deprecated` when counterevidence dominates
   - `deprecated -> archived` per curator policy
-- [ ] Write tests for automatic lifecycle progression
+- [x] Write tests for automatic lifecycle progression
 
 ### 2.5 User Feedback Signals
 
-- [ ] Implement CLI commands for user feedback:
+- [x] Implement CLI commands for user feedback:
   - `confirm <belief_id>` — emit `signal:belief_confirmed`, boost confidence
   - `refute <belief_id>` — emit `signal:belief_refuted`, reduce confidence
   - `trust <source_id> <level>` — emit `signal:source_trust_updated`
-- [ ] Wire feedback signals into agent processing
-- [ ] Write tests for feedback-driven confidence changes
+- [x] Wire feedback signals into agent processing
+- [x] Write tests for feedback-driven confidence changes
 
 ### 2.6 Reports
 
-- [ ] Implement report generation (CLI command or scheduled output):
+- [x] Implement report generation (CLI command or scheduled output):
   - Summary of new beliefs since last report
   - Active contradictions
   - Beliefs approaching decay threshold
   - Recently archived items
-- [ ] Add `report` CLI command
-- [ ] Write tests for report content accuracy
+- [x] Add `report` CLI command
+- [x] Write tests for report content accuracy
 
 ### 2.7 Snapshot & Restore
 
-- [ ] Implement `snapshot` CLI command — full SQLite database backup with timestamp
-- [ ] Implement `restore` CLI command — restore from a named snapshot
-- [ ] Verify round-trip: snapshot, mutate, restore, verify original state
-- [ ] Write tests for snapshot/restore integrity
+- [x] Implement `snapshot` CLI command — full SQLite database backup with timestamp
+- [x] Implement `restore` CLI command — restore from a named snapshot
+- [x] Verify round-trip: snapshot, mutate, restore, verify original state
+- [x] Write tests for snapshot/restore integrity
 
 ### 2.8 Anti-Rot Policies
 
-- [ ] Enforce mandatory decay — no belief exempt from time-based confidence reduction (unless decay_model=none is explicitly set)
-- [ ] Enforce mandatory archive review — curator must evaluate all cold items each cycle
-- [ ] Enforce mandatory duplicate detection — curator must run dedup each cycle
-- [ ] Enforce no silent deletion — all removals logged, archived items remain in DB
-- [ ] Write tests verifying each policy is enforced
+- [x] Enforce mandatory decay — no belief exempt from time-based confidence reduction (unless decay_model=none is explicitly set)
+- [x] Enforce mandatory archive review — curator must evaluate all cold items each cycle
+- [x] Enforce mandatory duplicate detection — curator must run dedup each cycle
+- [x] Enforce no silent deletion — all removals logged, archived items remain in DB
+- [x] Write tests verifying each policy is enforced
 
 ### 2.9 Security & Integrity Hardening
 
-- [ ] Verify foreign keys are enforced across all tables
-- [ ] Verify content_hash is checked on note retrieval (tamper detection)
-- [ ] Verify edge referential integrity (no dangling edges)
-- [ ] Verify LLM output (if used) never directly mutates beliefs — always mediated by services
-- [ ] Write integrity tests
+- [x] Verify foreign keys are enforced across all tables
+- [x] Verify content_hash is checked on note retrieval (tamper detection)
+- [x] Verify edge referential integrity (no dangling edges)
+- [x] Verify LLM output (if used) never directly mutates beliefs — always mediated by services
+- [x] Write integrity tests
 
 ### 2.10 Phase 2 Validation
 
-- [ ] Long-run integration test: simulate multi-day lifecycle with notes, beliefs, decay, archival
-- [ ] Verify scheduler runs all agents in correct order without errors
-- [ ] Verify snapshot/restore preserves full system state
-- [ ] Verify audit log captures every mutation across the entire lifecycle
-- [ ] Verify no in-memory-only state, no silent deletions, no uncited beliefs
+- [x] Long-run integration test: simulate multi-day lifecycle with notes, beliefs, decay, archival
+- [x] Verify scheduler runs all agents in correct order without errors
+- [x] Verify snapshot/restore preserves full system state
+- [x] Verify audit log captures every mutation across the entire lifecycle
+- [x] Verify no in-memory-only state, no silent deletions, no uncited beliefs
 
 ---
 
@@ -307,11 +307,11 @@ The goal of this phase is to make the system self-maintaining with scheduled bac
 
 All three phases are complete when:
 
-- [ ] Notes persist, are searchable via FTS and vector similarity, and are immutable
-- [ ] Beliefs have full lifecycle management with deterministic confidence scoring
-- [ ] Contradictions are detected and surfaced explicitly
-- [ ] The ask pipeline returns only evidence-grounded, cited answers
-- [ ] Background agents run on schedule and maintain system health
-- [ ] Every mutation is auditable and reversible
-- [ ] Snapshot/restore provides full backup capability
-- [ ] All tests pass
+- [x] Notes persist, are searchable via FTS and vector similarity, and are immutable
+- [x] Beliefs have full lifecycle management with deterministic confidence scoring
+- [x] Contradictions are detected and surfaced explicitly
+- [x] The ask pipeline returns only evidence-grounded, cited answers
+- [x] Background agents run on schedule and maintain system health
+- [x] Every mutation is auditable and reversible
+- [x] Snapshot/restore provides full backup capability
+- [x] All tests pass
